@@ -37,6 +37,26 @@ def test_missing_api_key_exits_with_message(monkeypatch):
         embed_texts(["hello"], "RETRIEVAL_QUERY")
 
 
+def test_retries_once_after_429(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    sleeps = []
+    monkeypatch.setattr("sentinel.embed.time.sleep", sleeps.append)
+    attempts = []
+
+    def fake(req, timeout=None):
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise urllib.error.HTTPError(
+                "https://x", 429, "Too Many Requests", None, io.BytesIO(b"quota")
+            )
+        return io.BytesIO(json.dumps({"embeddings": [{"values": [3.0, 4.0]}]}).encode())
+
+    monkeypatch.setattr("sentinel.embed.urllib.request.urlopen", fake)
+    assert embed_texts(["hello"], "RETRIEVAL_QUERY") == [[0.6, 0.8]]
+    assert sleeps == [60]
+    assert len(attempts) == 2
+
+
 def test_http_error_surfaces_response_body(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
 

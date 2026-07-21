@@ -47,11 +47,16 @@ def embed_texts(texts: list[str], task_type: str) -> list[list[float]]:
         req = urllib.request.Request(
             URL, data=body, headers={"Content-Type": "application/json", "x-goog-api-key": key}
         )
-        try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                payload = json.load(resp)
-        except urllib.error.HTTPError as e:
-            raise RuntimeError(f"Gemini API HTTP {e.code}: {e.read().decode(errors='replace')}") from None
+        for attempt in (1, 2):
+            try:
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    payload = json.load(resp)
+                break
+            except urllib.error.HTTPError as e:
+                if e.code == 429 and attempt == 1:
+                    time.sleep(60)  # ponytail: free tier allows 100 embed requests/min; one blunt wait outlives any window
+                    continue
+                raise RuntimeError(f"Gemini API HTTP {e.code}: {e.read().decode(errors='replace')}") from None
         embeddings = payload.get("embeddings") or []
         if len(embeddings) != len(batch):
             raise RuntimeError(f"Gemini returned {len(embeddings)} embeddings for {len(batch)} texts")
