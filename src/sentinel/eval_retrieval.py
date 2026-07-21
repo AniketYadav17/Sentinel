@@ -7,6 +7,7 @@ Ground truth is each claim's cited rule ids, normalized to chunk granularity.
 import argparse
 import hashlib
 import json
+import re
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -20,9 +21,8 @@ KS = (3, 5, 10)
 def normalize_rule_id(rule: str) -> str:
     """'CONC 3.3.4G(2)' -> 'CONC 3.3.4' (the chunker's rule_id granularity)."""
     base = rule.split("(")[0].strip()
-    if base.endswith(("R", "G")) and base[-2].isdigit():
-        base = base[:-1]
-    return base
+    m = re.fullmatch(r"(.*\d[A-Z]?)[RG]", base)
+    return m.group(1) if m else base
 
 
 def score(relevant: set[str], retrieved: list[str]) -> dict:

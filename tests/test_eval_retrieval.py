@@ -16,6 +16,7 @@ from sentinel.index import Index
         ("CONC 3.3.1R(1A)", "CONC 3.3.1"),
         ("CONC 3.3.1", "CONC 3.3.1"),
         ("CONC 5A.2.1R", "CONC 5A.2.1"),
+        ("CONC 3.3.9AR", "CONC 3.3.9A"),
     ],
 )
 def test_normalize_rule_id(raw, expected):

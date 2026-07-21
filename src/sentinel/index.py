@@ -23,6 +23,10 @@ class Index:
             raise ValueError(
                 f"{len(chunks)} chunks but {len(vectors)} vectors — re-run python -m sentinel.embed"
             )
+        if not chunks:
+            raise ValueError("empty chunk data — re-run python -m sentinel.ingest")
+        if len({len(v) for v in vectors}) != 1:
+            raise ValueError("corpus vectors have mixed dimensions — re-run python -m sentinel.embed")
         self.chunks = chunks
         self.vectors = vectors
         docs = [tokenize(c["text"]) for c in chunks]
@@ -80,6 +84,11 @@ class Index:
         return scores
 
     def _dense_scores(self, query_vector: list[float]) -> list[float]:
+        if len(query_vector) != len(self.vectors[0]):
+            raise ValueError(
+                f"query vector dim {len(query_vector)} != corpus dim {len(self.vectors[0])}"
+                " — re-run python -m sentinel.embed and delete data/embeddings/queries.jsonl"
+            )
         # vectors are L2-normalized, so dot product == cosine
         return [sum(a * b for a, b in zip(query_vector, v)) for v in self.vectors]
 

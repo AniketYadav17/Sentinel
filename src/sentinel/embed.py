@@ -9,6 +9,7 @@ import math
 import os
 import sys
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -46,8 +47,11 @@ def embed_texts(texts: list[str], task_type: str) -> list[list[float]]:
         req = urllib.request.Request(
             URL, data=body, headers={"Content-Type": "application/json", "x-goog-api-key": key}
         )
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            payload = json.load(resp)
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                payload = json.load(resp)
+        except urllib.error.HTTPError as e:
+            raise RuntimeError(f"Gemini API HTTP {e.code}: {e.read().decode(errors='replace')}") from None
         embeddings = payload.get("embeddings") or []
         if len(embeddings) != len(batch):
             raise RuntimeError(f"Gemini returned {len(embeddings)} embeddings for {len(batch)} texts")

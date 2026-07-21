@@ -42,3 +42,13 @@ def test_hybrid_rrf_rewards_consensus():
 def test_mismatched_chunk_and_vector_counts_raise():
     with pytest.raises(ValueError, match="re-run"):
         Index(CHUNKS, VECS[:2])
+
+
+def test_empty_corpus_raises():
+    with pytest.raises(ValueError, match="re-run"):
+        Index([], [])
+
+
+def test_dense_dim_mismatch_raises():
+    with pytest.raises(ValueError, match="dim"):
+        make_index().search_dense([1.0, 0.0, 0.0], k=1)
