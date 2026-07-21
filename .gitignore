@@ -13,3 +13,6 @@ build/
 
 # secrets / local config
 .env
+
+# fetched corpus
+data/
