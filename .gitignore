@@ -1,0 +1,15 @@
+# python
+__pycache__/
+*.py[cod]
+.venv/
+dist/
+build/
+*.egg-info/
+
+# tooling caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+
+# secrets / local config
+.env
