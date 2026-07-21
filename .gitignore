@@ -16,3 +16,7 @@ build/
 
 # fetched corpus
 data/
+
+# private study docs (kept locally, never published)
+Capstone Proposal*.md
+Sentinel — Project Understanding.md
