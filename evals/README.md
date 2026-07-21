@@ -26,3 +26,23 @@ The handbook changes over time; rule ids in labels are as-verified on the date t
 ## Coverage so far
 
 56 draft examples across five areas: CONC 3.3 misleading promotions (payday/broker copy), CONC 3.5 rep-example and representative-APR triggers (loans/car finance), CONC 3.5.12R interest-free claims (BNPL/retail), CONC 3.3.1R comms accuracy (credit cards, support replies and T&Cs), CONC 3.4 HCSTC risk warnings. Overall verdicts: 36 breach / 11 compliant / 9 needs_review. Next: BCOBS, and adversarial/injection cases as a separate suite.
+
+## Retrieval metrics (trade-off study v1, 2026-07-21)
+
+Scored by `python -m sentinel.eval_retrieval --mode all` — one query per golden
+claim, ground truth = the claim's cited rule ids at chunk granularity. Corpus:
+CONC 3 (86 chunks, gemini-embedding-001 @ 768 dims). 199 claims scored,
+0 skipped.
+
+| mode | recall@3 | recall@5 | recall@10 | hit@5 | MRR |
+|---|---|---|---|---|---|
+| bm25 | 0.300 | 0.398 | 0.466 | 0.497 | 0.355 |
+| dense | **0.441** | **0.497** | **0.550** | **0.573** | **0.458** |
+| hybrid (RRF) | 0.385 | 0.453 | 0.543 | 0.553 | 0.445 |
+
+Honest headline: **dense-only beats naive RRF hybrid** on this corpus — the
+weak BM25 arm dilutes fusion at the top ranks (hybrid only edges ahead on
+hit@10, 0.623 vs 0.608). Weakest area across all modes is comms-accuracy
+(subtle support-reply/T&C language). Recall@5 ≈ 0.50 leaves clear headroom, so
+per the spec the next measured arms are a cross-encoder reranker and weighted
+fusion — see `docs/superpowers/specs/2026-07-21-phase2-retrieval-design.md`.
