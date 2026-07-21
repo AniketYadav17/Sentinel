@@ -4,8 +4,15 @@ Usage: python -m sentinel.eval_retrieval [--mode bm25|dense|hybrid|all]
 Ground truth is each claim's cited rule ids, normalized to chunk granularity.
 """
 
+import argparse
+import hashlib
 import json
+import sys
+from collections import defaultdict
 from pathlib import Path
+
+from sentinel.embed import embed_texts
+from sentinel.index import Index
 
 KS = (3, 5, 10)
 
@@ -42,3 +49,79 @@ def load_claims(golden_path: Path, corpus_rule_ids: set[str]) -> tuple[list[dict
             else:
                 skipped += 1
     return claims, skipped
+
+
+def retrieve(index: Index, mode: str, query: str, query_vector, k: int = 10) -> list[str]:
+    if mode == "bm25":
+        chunks = index.search_bm25(query, k)
+    elif mode == "dense":
+        chunks = index.search_dense(query_vector, k)
+    else:
+        chunks = index.search_hybrid(query, query_vector, k)
+    return [c["rule_id"] for c in chunks]
+
+
+def query_vectors(queries: list[str], cache_path: Path) -> list[list[float]]:
+    """Embed queries with a sha256-keyed JSONL cache so re-runs are offline."""
+    sha = lambda text: hashlib.sha256(text.encode()).hexdigest()
+    cache: dict[str, list[float]] = {}
+    if cache_path.exists():
+        for line in cache_path.read_text(encoding="utf-8").splitlines():
+            if line:
+                rec = json.loads(line)
+                cache[rec["sha"]] = rec["vector"]
+    missing = [q for q in dict.fromkeys(queries) if sha(q) not in cache]
+    if missing:
+        vectors = embed_texts(missing, "RETRIEVAL_QUERY")
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        with cache_path.open("a", encoding="utf-8") as f:
+            for q, v in zip(missing, vectors):
+                cache[sha(q)] = v
+                f.write(json.dumps({"sha": sha(q), "vector": v}) + "\n")
+    return [cache[sha(q)] for q in queries]
+
+
+def _print_table(mode: str, rows: list[dict]) -> None:
+    metrics = [f"recall@{k}" for k in KS] + [f"hit@{k}" for k in KS] + ["mrr"]
+    mean = lambda rs: {m: sum(r[m] for r in rs) / len(rs) for m in metrics}
+    print(f"\n== {mode} ({len(rows)} claims) ==")
+    header = f"{'':<22}" + "".join(f"{m:>10}" for m in metrics)
+    print(header)
+    line = lambda label, agg: print(f"{label:<22}" + "".join(f"{agg[m]:>10.3f}" for m in metrics))
+    line("overall", mean(rows))
+    by_area = defaultdict(list)
+    for r in rows:
+        by_area[r["area"]].append(r)
+    for area in sorted(by_area):
+        line(area, mean(by_area[area]))
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--mode", choices=("bm25", "dense", "hybrid", "all"), default="all")
+    args = parser.parse_args()
+
+    root = Path(__file__).parents[2]
+    index = Index.load(root / "data")
+    claims, skipped = load_claims(root / "evals" / "golden.jsonl", {c["rule_id"] for c in index.chunks})
+    if not claims:
+        sys.exit("no scorable claims — is the corpus ingested and golden.jsonl present?")
+    print(f"{len(index.chunks)} chunks, {len(claims)} claims scored, {skipped} skipped (cited rules not in corpus)")
+
+    modes = ("bm25", "dense", "hybrid") if args.mode == "all" else (args.mode,)
+    queries = [c["query"] for c in claims]
+    vectors = (
+        query_vectors(queries, root / "data" / "embeddings" / "queries.jsonl")
+        if modes != ("bm25",)
+        else [None] * len(claims)
+    )
+    for mode in modes:
+        rows = [
+            score(c["relevant"], retrieve(index, mode, c["query"], v)) | {"area": c["area"]}
+            for c, v in zip(claims, vectors)
+        ]
+        _print_table(mode, rows)
+
+
+if __name__ == "__main__":
+    main()

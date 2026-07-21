@@ -2,7 +2,8 @@ import json
 
 import pytest
 
-from sentinel.eval_retrieval import load_claims, normalize_rule_id, score
+from sentinel.eval_retrieval import load_claims, normalize_rule_id, query_vectors, retrieve, score
+from sentinel.index import Index
 
 
 @pytest.mark.parametrize(
@@ -52,3 +53,37 @@ def test_load_claims_skips_out_of_corpus_and_counts(tmp_path):
     assert claims == [
         {"query": "guaranteed approval", "relevant": {"CONC 3.3.3"}, "area": "misleading-3.3"}
     ]
+
+
+CHUNKS = [
+    {"rule_id": "CONC 3.3.3", "text": "guaranteed approval regardless of status"},
+    {"rule_id": "CONC 3.4.1", "text": "high cost short term credit risk warning"},
+]
+VECS = [[1.0, 0.0], [0.0, 1.0]]
+
+
+def test_retrieve_dispatches_by_mode():
+    idx = Index(CHUNKS, VECS)
+    assert retrieve(idx, "bm25", "guaranteed approval", None, k=1) == ["CONC 3.3.3"]
+    assert retrieve(idx, "dense", "anything", [0.0, 1.0], k=1) == ["CONC 3.4.1"]
+    assert retrieve(idx, "hybrid", "guaranteed approval", [1.0, 0.0], k=1) == ["CONC 3.3.3"]
+
+
+def test_query_vectors_caches_and_reuses(tmp_path, monkeypatch):
+    calls = []
+
+    def fake_embed(texts, task_type):
+        calls.append(list(texts))
+        assert task_type == "RETRIEVAL_QUERY"
+        return [[1.0, 0.0]] * len(texts)
+
+    monkeypatch.setattr("sentinel.eval_retrieval.embed_texts", fake_embed)
+    cache = tmp_path / "queries.jsonl"
+
+    first = query_vectors(["q1", "q2"], cache)
+    assert first == [[1.0, 0.0], [1.0, 0.0]]
+    assert calls == [["q1", "q2"]]
+
+    second = query_vectors(["q1", "q2", "q3"], cache)  # only q3 is a miss
+    assert second == [[1.0, 0.0]] * 3
+    assert calls == [["q1", "q2"], ["q3"]]
