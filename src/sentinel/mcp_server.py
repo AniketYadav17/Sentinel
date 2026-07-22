@@ -18,7 +18,10 @@ def make_server(index) -> FastMCP:
         if mode == "dense":
             from sentinel.embed import embed_texts
 
-            chunks = index.search_dense(embed_texts([query], "RETRIEVAL_QUERY")[0], k)
+            try:
+                chunks = index.search_dense(embed_texts([query], "RETRIEVAL_QUERY")[0], k)
+            except SystemExit as e:
+                raise RuntimeError(str(e)) from None
         elif mode == "bm25":
             chunks = index.search_bm25(query, k)
         else:
