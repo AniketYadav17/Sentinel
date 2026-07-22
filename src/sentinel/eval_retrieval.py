@@ -1,6 +1,6 @@
 """Score retrieval against the golden set: recall@k, hit@k, MRR per mode.
 
-Usage: python -m sentinel.eval_retrieval [--mode bm25|dense|hybrid|all]
+Usage: python -m sentinel.eval_retrieval [--mode bm25|dense|hybrid|weighted|weighted-sweep|all] [--alpha 0.5]
 Ground truth is each claim's cited rule ids, normalized to chunk granularity.
 """
 
@@ -51,11 +51,13 @@ def load_claims(golden_path: Path, corpus_rule_ids: set[str]) -> tuple[list[dict
     return claims, skipped
 
 
-def retrieve(index: Index, mode: str, query: str, query_vector, k: int = 10) -> list[str]:
+def retrieve(index: Index, mode: str, query: str, query_vector, k: int = 10, alpha: float = 0.5) -> list[str]:
     if mode == "bm25":
         chunks = index.search_bm25(query, k)
     elif mode == "dense":
         chunks = index.search_dense(query_vector, k)
+    elif mode == "weighted":
+        chunks = index.search_weighted(query, query_vector, alpha, k)
     else:
         chunks = index.search_hybrid(query, query_vector, k)
     return [c["rule_id"] for c in chunks]
@@ -98,7 +100,8 @@ def _print_table(mode: str, rows: list[dict]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mode", choices=("bm25", "dense", "hybrid", "all"), default="all")
+    parser.add_argument("--mode", choices=("bm25", "dense", "hybrid", "weighted", "weighted-sweep", "all"), default="all")
+    parser.add_argument("--alpha", type=float, default=0.5)
     args = parser.parse_args()
 
     root = Path(__file__).parents[2]
@@ -108,19 +111,36 @@ def main() -> None:
         sys.exit("no scorable claims — is the corpus ingested and golden.jsonl present?")
     print(f"{len(index.chunks)} chunks, {len(claims)} claims scored, {skipped} skipped (cited rules not in corpus)")
 
-    modes = ("bm25", "dense", "hybrid") if args.mode == "all" else (args.mode,)
+    if args.mode == "weighted-sweep":
+        modes = ("weighted",)
+        alphas = [i / 10 for i in range(11)]
+    else:
+        modes = ("bm25", "dense", "hybrid", "weighted") if args.mode == "all" else (args.mode,)
+        alphas = [args.alpha]
+
     queries = [c["query"] for c in claims]
     vectors = (
         query_vectors(queries, root / "data" / "embeddings" / "queries.jsonl")
-        if modes != ("bm25",)
+        if any(m != "bm25" for m in modes)
         else [None] * len(claims)
     )
-    for mode in modes:
-        rows = [
-            score(c["relevant"], retrieve(index, mode, c["query"], v)) | {"area": c["area"]}
-            for c, v in zip(claims, vectors)
-        ]
-        _print_table(mode, rows)
+
+    if args.mode == "weighted-sweep":
+        print("\nweighted-sweep results (alpha tuned on the golden set — overfitting risk, see spec):")
+        for alpha in alphas:
+            rows = [
+                score(c["relevant"], retrieve(index, "weighted", c["query"], v, alpha=alpha)) | {"area": c["area"]}
+                for c, v in zip(claims, vectors)
+            ]
+            overall = {m: sum(r[m] for r in rows) / len(rows) for m in ["recall@5", "mrr"]}
+            print(f"  alpha={alpha:.1f}: recall@5={overall['recall@5']:.3f}, mrr={overall['mrr']:.3f}")
+    else:
+        for mode in modes:
+            rows = [
+                score(c["relevant"], retrieve(index, mode, c["query"], v, alpha=args.alpha)) | {"area": c["area"]}
+                for c, v in zip(claims, vectors)
+            ]
+            _print_table(mode, rows)
 
 
 if __name__ == "__main__":

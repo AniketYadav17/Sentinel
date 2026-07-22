@@ -67,6 +67,14 @@ class Index:
                 fused[i] += 1.0 / (RRF_K + rank + 1)
         return [self.chunks[i] for i in self._top(fused, k)]
 
+    def search_weighted(self, query: str, query_vector: list[float], alpha: float = 0.5, k: int = 10) -> list[dict]:
+        def norm(scores: list[float]) -> list[float]:
+            lo, hi = min(scores), max(scores)
+            return [(s - lo) / (hi - lo) if hi > lo else 0.0 for s in scores]
+
+        bm25, dense = norm(self._bm25_scores(query)), norm(self._dense_scores(query_vector))
+        return [self.chunks[i] for i in self._top([alpha * d + (1 - alpha) * b for b, d in zip(bm25, dense)], k)]
+
     def _bm25_scores(self, query: str) -> list[float]:
         n = len(self.chunks)
         scores = [0.0] * n
