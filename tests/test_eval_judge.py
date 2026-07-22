@@ -45,3 +45,14 @@ def test_load_golden_claims(tmp_path):
     p.write_text(json.dumps(example) + "\n", encoding="utf-8")
     claims = ej.load_golden_claims(p)
     assert claims[0]["channel"] == "promo_email" and claims[0]["rules"] == ["CONC 3.3.1R"]
+
+
+import sentinel.eval_judge_e2e as e2e
+
+
+def test_e2e_rows_scores_overall_verdicts():
+    examples = [{"overall_verdict": "breach", "claims": [1, 2]}, {"overall_verdict": "compliant", "claims": [1]}]
+    fake = iter([{"overall": "breach", "claims": [{}, {}, {}]}, {"overall": "breach", "claims": [{}]}])
+    m = e2e.e2e_rows(examples, run_example=lambda ex: next(fake))
+    assert m["overall_accuracy"] == 0.5
+    assert m["mean_claim_delta"] == 0.5  # |3-2| and |1-1| -> mean 0.5

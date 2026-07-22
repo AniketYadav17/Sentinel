@@ -23,3 +23,7 @@ mcp = [
 rerank = [
     "sentence-transformers>=3",
 ]
+evals-llm = [
+    "ragas>=0.2",
+    "langchain-google-genai>=2",
+]
