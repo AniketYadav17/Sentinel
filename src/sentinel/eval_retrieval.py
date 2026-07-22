@@ -1,6 +1,6 @@
 """Score retrieval against the golden set: recall@k, hit@k, MRR per mode.
 
-Usage: python -m sentinel.eval_retrieval [--mode bm25|dense|hybrid|weighted|weighted-sweep|all] [--alpha 0.5]
+Usage: python -m sentinel.eval_retrieval [--mode bm25|dense|hybrid|weighted|weighted-sweep|rerank|all] [--alpha 0.5]
 Ground truth is each claim's cited rule ids, normalized to chunk granularity.
 """
 
@@ -14,6 +14,7 @@ from pathlib import Path
 
 from sentinel.embed import embed_texts
 from sentinel.index import Index
+from sentinel.rerank import rerank, RERANK_POOL
 
 KS = (3, 5, 10)
 
@@ -58,6 +59,10 @@ def retrieve(index: Index, mode: str, query: str, query_vector, k: int = 10, alp
         chunks = index.search_dense(query_vector, k)
     elif mode == "weighted":
         chunks = index.search_weighted(query, query_vector, alpha, k)
+    elif mode == "rerank":
+        dense_chunks = index.search_dense(query_vector, RERANK_POOL)
+        from sentinel.rerank import ce_scorer
+        chunks = rerank(query, dense_chunks, ce_scorer, k)
     else:
         chunks = index.search_hybrid(query, query_vector, k)
     return [c["rule_id"] for c in chunks]
@@ -100,7 +105,7 @@ def _print_table(mode: str, rows: list[dict]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mode", choices=("bm25", "dense", "hybrid", "weighted", "weighted-sweep", "all"), default="all")
+    parser.add_argument("--mode", choices=("bm25", "dense", "hybrid", "weighted", "weighted-sweep", "rerank", "all"), default="all")
     parser.add_argument("--alpha", type=float, default=0.5)
     args = parser.parse_args()
 
