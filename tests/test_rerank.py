@@ -1,6 +1,6 @@
 from sentinel.rerank import rerank
 
-CHUNKS = [{"rule_id": "A", "text": "aaa"}, {"rule_id": "B", "text": "bb"}, {"rule_id": "C", "text": "c"}]
+CHUNKS = [{"rule_id": "C", "text": "c"}, {"rule_id": "A", "text": "aaa"}, {"rule_id": "B", "text": "bb"}]
 
 
 def test_rerank_orders_by_scorer_and_truncates():
@@ -12,4 +12,4 @@ def test_rerank_orders_by_scorer_and_truncates():
 def test_rerank_passes_query_text_pairs():
     seen = []
     rerank("the query", CHUNKS, lambda pairs: (seen.extend(pairs), [0.0] * len(pairs))[1], k=1)
-    assert seen[0] == ("the query", "aaa")
+    assert seen[0] == ("the query", "c")
