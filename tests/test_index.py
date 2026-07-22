@@ -71,3 +71,24 @@ def test_weighted_alpha_0_matches_bm25(idx):
     assert [c["rule_id"] for c in idx.search_weighted(q, qv, alpha=0.0, k=3)] == [
         c["rule_id"] for c in idx.search_bm25(q, 3)
     ]
+
+
+def test_weighted_boundaries_with_real_bm25_signal(idx):
+    # "cat sat" appears only in A 1, ensuring BM25 differentiates chunks
+    q, qv = "cat sat", [1.0, 0.0]
+
+    # Verify real BM25 signal: only A 1 has both words
+    bm25_results = idx.search_bm25(q, 3)
+    bm25_ids = tuple(c["rule_id"] for c in bm25_results)
+    assert len({bm25_ids}) == 1, f"Expected single BM25 ranking, got varied: {bm25_ids}"
+    assert bm25_results[0]["rule_id"] == "A 1", "A 1 should rank first (has 'cat sat')"
+
+    # alpha=0.0: should match pure BM25
+    assert [c["rule_id"] for c in idx.search_weighted(q, qv, alpha=0.0, k=3)] == [
+        c["rule_id"] for c in idx.search_bm25(q, 3)
+    ]
+
+    # alpha=1.0: should match pure dense (qv = [1.0, 0.0] matches A 1's vector)
+    assert [c["rule_id"] for c in idx.search_weighted(q, qv, alpha=1.0, k=3)] == [
+        c["rule_id"] for c in idx.search_dense(qv, 3)
+    ]
