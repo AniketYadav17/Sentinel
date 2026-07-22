@@ -32,6 +32,11 @@ def test_citation_hit_uses_normalized_overlap():
     assert ej.judge_metrics(rows)["citation_hit"] == 0.5
 
 
+def test_empty_rows_all_metrics_zero():
+    m = ej.judge_metrics([])
+    assert m["n"] == 0 and m["accuracy"] == 0.0 and m["confusion"] == {} and m["by_area"] == {}
+
+
 def test_load_golden_claims(tmp_path):
     example = {"id": "gold-001", "channel": "promo_email", "input_text": "t", "area": "misleading-3.3",
                "claims": [{"claim": "c", "verdict": "breach", "severity": "high", "rules": ["CONC 3.3.1R"], "rationale": "r"}],

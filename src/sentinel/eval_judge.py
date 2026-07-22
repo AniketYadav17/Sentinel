@@ -7,7 +7,6 @@ Retrieval ceiling applies: dense recall@5 ~= .50 bounds citation_hit (that is 3b
 
 import argparse
 import json
-import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -50,7 +49,7 @@ def judge_metrics(rows: list[dict]) -> dict:
         by_area[r["area"]].append(r["gold"]["verdict"] == r["pred"]["verdict"])
     return {
         "n": n,
-        "accuracy": sum(r["gold"]["verdict"] == r["pred"]["verdict"] for r in rows) / n,
+        "accuracy": (sum(r["gold"]["verdict"] == r["pred"]["verdict"] for r in rows) / n) if n else 0.0,
         "confusion": dict(confusion),
         "per_class": per_class,
         "severity_agreement": (sum(r["gold"]["severity"] == r["pred"]["severity"] for r in agreed_breach)
