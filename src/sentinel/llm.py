@@ -12,7 +12,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-MODEL = "gemini-2.5-flash-lite"
+MODEL = "gemini-3.5-flash-lite"  # 2.5-flash-lite 404s for new keys since 2026-07 ("no longer available to new users")
 URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
 CACHE_DIR = Path(__file__).parents[2] / "data" / "cache" / "llm"
 

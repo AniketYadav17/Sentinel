@@ -30,6 +30,8 @@ def run_ragas_mode(root: Path) -> None:
     api_key = os.environ.get("GEMINI_API_KEY") or sys.exit(
         "GEMINI_API_KEY not set — create one at aistudio.google.com and set the env var"
     )
-    llm = LangchainLLMWrapper(ChatGoogleGenerativeAI(model="gemini-2.5-flash-lite", google_api_key=api_key))
+    from sentinel.llm import MODEL
+
+    llm = LangchainLLMWrapper(ChatGoogleGenerativeAI(model=MODEL, google_api_key=api_key))
     result = evaluate(dataset, metrics=[Faithfulness(llm=llm), LLMContextPrecisionWithoutReference(llm=llm)])
     print(f"\n== ragas ({len(rows)} sampled rationales) ==\n{result}")
