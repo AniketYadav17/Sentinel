@@ -36,16 +36,16 @@ class Index:
         self._df = Counter(term for d in docs for term in set(d))
 
     @classmethod
-    def load(cls, data_dir: Path) -> "Index":
+    def load(cls, data_dir: Path, embeddings_dir: str = "embeddings") -> "Index":
         chunk_files = sorted((data_dir / "chunks").glob("*.jsonl"))
         if not chunk_files:
             raise FileNotFoundError("no chunk files in data/chunks — run python -m sentinel.ingest first")
         chunks: list[dict] = []
         vectors: list[list[float]] = []
         for cf in chunk_files:
-            ef = data_dir / "embeddings" / cf.name
+            ef = data_dir / embeddings_dir / cf.name
             if not ef.exists():
-                raise FileNotFoundError(f"{ef} missing — run python -m sentinel.embed")
+                raise FileNotFoundError(f"{ef} missing — run python -m sentinel.embed (or python -m sentinel.blurbs for the ctx arm)")
             emb = {r["rule_id"]: r["vector"] for r in _read_jsonl(ef)}
             for c in _read_jsonl(cf):
                 if c["rule_id"] not in emb:
