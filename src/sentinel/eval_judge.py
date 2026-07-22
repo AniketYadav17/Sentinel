@@ -7,6 +7,7 @@ Retrieval ceiling applies: dense recall@5 ~= .50 bounds citation_hit (that is 3b
 
 import argparse
 import json
+import os
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -77,7 +78,8 @@ def run_judge_mode(root: Path) -> None:
     vectors = query_vectors([c["claim"] for c in claims], root / "data" / "embeddings" / "queries.jsonl")
     rows = []
     RESULTS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with RESULTS_PATH.open("w", encoding="utf-8") as f:
+    tmp = RESULTS_PATH.with_suffix(".jsonl.tmp")
+    with tmp.open("w", encoding="utf-8") as f:
         for c, v in zip(claims, vectors):
             provisions = index.search_dense(v, TOP_K)
             pred = judgement_from_llm(generate_json(judge_prompt(c["claim"], c["channel"], c["input_text"], provisions), JUDGE_SCHEMA))
@@ -86,6 +88,7 @@ def run_judge_mode(root: Path) -> None:
             rows.append(row)
             f.write(json.dumps({"claim": c["claim"], "pred": pred, "area": c["area"],
                                 "contexts": [p["text"] for p in provisions]}) + "\n")
+    os.replace(tmp, RESULTS_PATH)
     print_metrics(judge_metrics(rows))
 
 

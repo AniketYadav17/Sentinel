@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 import sentinel.eval_judge as ej
 
 
@@ -56,3 +58,41 @@ def test_e2e_rows_scores_overall_verdicts():
     m = e2e.e2e_rows(examples, run_example=lambda ex: next(fake))
     assert m["overall_accuracy"] == 0.5
     assert m["mean_claim_delta"] == 0.5  # |3-2| and |1-1| -> mean 0.5
+
+
+def test_run_judge_mode_does_not_publish_partial_results_on_crash(tmp_path, monkeypatch):
+    monkeypatch.setattr(ej, "RESULTS_PATH", tmp_path / "cache" / "judge_results.jsonl")
+    monkeypatch.setattr(
+        ej,
+        "load_golden_claims",
+        lambda path: [
+            {"claim": "c1", "verdict": "breach", "severity": "high", "rules": [], "area": "a", "channel": "ch", "input_text": "t"},
+            {"claim": "c2", "verdict": "compliant", "severity": None, "rules": [], "area": "a", "channel": "ch", "input_text": "t"},
+        ],
+    )
+    monkeypatch.setattr(ej, "query_vectors", lambda queries, cache_path: [[0.1], [0.2]])
+
+    class FakeIndex:
+        @staticmethod
+        def load(data_dir):
+            return FakeIndex()
+
+        def search_dense(self, v, k):
+            return []
+
+    monkeypatch.setattr(ej, "Index", FakeIndex)
+
+    calls = {"n": 0}
+
+    def crashing_generate_json(prompt, schema):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise RuntimeError("simulated 429 wall")
+        return {"verdict": "breach", "severity": "high", "rule_ids": [], "rationale": "r", "confidence": "high"}
+
+    monkeypatch.setattr(ej, "generate_json", crashing_generate_json)
+
+    with pytest.raises(RuntimeError, match="simulated 429 wall"):
+        ej.run_judge_mode(tmp_path)
+
+    assert not ej.RESULTS_PATH.exists()

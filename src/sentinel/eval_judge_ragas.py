@@ -3,6 +3,7 @@
 import json
 import os
 import random
+import sys
 from pathlib import Path
 
 from sentinel.eval_judge import RESULTS_PATH
@@ -26,6 +27,9 @@ def run_ragas_mode(root: Path) -> None:
         {"user_input": r["claim"], "response": r["pred"]["rationale"], "retrieved_contexts": r["contexts"]}
         for r in rows
     ])
-    llm = LangchainLLMWrapper(ChatGoogleGenerativeAI(model="gemini-2.5-flash-lite", google_api_key=os.environ["GEMINI_API_KEY"]))
+    api_key = os.environ.get("GEMINI_API_KEY") or sys.exit(
+        "GEMINI_API_KEY not set — create one at aistudio.google.com and set the env var"
+    )
+    llm = LangchainLLMWrapper(ChatGoogleGenerativeAI(model="gemini-2.5-flash-lite", google_api_key=api_key))
     result = evaluate(dataset, metrics=[Faithfulness(llm=llm), LLMContextPrecisionWithoutReference(llm=llm)])
     print(f"\n== ragas ({len(rows)} sampled rationales) ==\n{result}")
