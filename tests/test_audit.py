@@ -76,3 +76,26 @@ def test_apply_resolutions_recomputes_overall():
     report = {"overall": "needs_review", "claims": [{"claim": "c", "verdict": "needs_review", "severity": None, "rule_ids": [], "rationale": "r", "confidence": "low"}]}
     out = audit._apply_resolutions(report, {"0": "compliant"})
     assert out["overall"] == "compliant" and out["claims"][0]["resolved_by"] == "human"
+
+
+def test_format_summary_lists_claims():
+    report = {"overall": "breach", "claims": [
+        {"claim": "c1", "verdict": "breach", "severity": "high", "rule_ids": ["CONC 3.3.1R"], "rationale": "r", "confidence": "high"},
+        {"claim": "c2", "verdict": "compliant", "severity": None, "rule_ids": [], "rationale": "r", "confidence": "high"},
+    ]}
+    s = audit.format_summary(report)
+    assert "OVERALL: breach" in s and "CONC 3.3.1R" in s and "c2" in s
+
+
+def test_resolve_pending_prompts_per_claim():
+    answers = iter(["breach", "compliant"])
+    pending = [{"index": 0, "claim": "c1", "judged": {"verdict": "needs_review", "rationale": "r", "confidence": "low"}},
+               {"index": 2, "claim": "c3", "judged": {"verdict": "compliant", "rationale": "r", "confidence": "low"}}]
+    out = audit.resolve_pending(pending, ask=lambda prompt: next(answers))
+    assert out == {"0": "breach", "2": "compliant"}
+
+
+def test_resolve_pending_rejects_bad_verdict():
+    answers = iter(["nonsense", "breach"])
+    pending = [{"index": 0, "claim": "c1", "judged": {"verdict": "needs_review", "rationale": "r", "confidence": "low"}}]
+    assert audit.resolve_pending(pending, ask=lambda prompt: next(answers)) == {"0": "breach"}

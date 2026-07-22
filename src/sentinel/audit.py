@@ -5,7 +5,10 @@ JSON report on stdout, human summary on stderr. Pauses for human input when any
 claim is needs_review or low-confidence (in-process; sqlite resume is Phase 4).
 """
 
+import argparse
+import json
 import operator
+import sys
 from pathlib import Path
 from typing import Annotated, TypedDict
 
@@ -154,4 +157,48 @@ def default_searcher():
     index = Index.load(Path(__file__).parents[2] / "data")
     return lambda claim: index.search_dense(embed_texts([claim], "RETRIEVAL_QUERY")[0], TOP_K)
 
+
+def format_summary(report: dict) -> str:
+    lines = [f"OVERALL: {report['overall']}"]
+    for c in report["claims"]:
+        rules = ", ".join(c["rule_ids"]) or "-"
+        who = " (human)" if c.get("resolved_by") == "human" else ""
+        lines.append(f"  [{c['verdict']}{who}] {c['claim']}  rules: {rules}  severity: {c['severity']}")
+    return "\n".join(lines)
+
+
+def resolve_pending(pending: list[dict], ask=input) -> dict:
+    print(f"{len(pending)} claim(s) need human review:", file=sys.stderr)
+    out = {}
+    for p in pending:
+        print(f"  claim: {p['claim']}\n  judged: {p['judged']['verdict']} — {p['judged']['rationale']}", file=sys.stderr)
+        verdict = ""
+        while verdict not in _RANK:
+            verdict = ask("your verdict [breach/compliant/needs_review]: ").strip()
+        out[str(p["index"])] = verdict
+    return out
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("text", nargs="?", help="communication text (or use --file)")
+    parser.add_argument("--channel", default="promo_email")
+    parser.add_argument("--file", help="read communication text from a file")
+    args = parser.parse_args()
+    if not args.text and not args.file:
+        parser.error("provide text or --file")
+    text = open(args.file, encoding="utf-8").read() if args.file else args.text
+
+    graph = build_graph(default_searcher())
+    config = {"configurable": {"thread_id": "cli"}}
+    state = graph.invoke({"text": text, "channel": args.channel}, config)
+    if "__interrupt__" in state:
+        resolutions = resolve_pending(state["__interrupt__"][0].value["pending"])
+        state = graph.invoke(Command(resume=resolutions), config)
+    print(json.dumps(state["report"], indent=2))
+    print(format_summary(state["report"]), file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()
 
