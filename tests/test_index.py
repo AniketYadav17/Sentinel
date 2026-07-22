@@ -16,6 +16,11 @@ def make_index() -> Index:
     return Index(CHUNKS, VECS)
 
 
+@pytest.fixture
+def idx() -> Index:
+    return Index(CHUNKS, VECS)
+
+
 def test_tokenize_lowercases_and_strips_punctuation():
     assert tokenize("Cats, DOGS; (mats)") == ["cats", "dogs", "mats"]
 
@@ -52,3 +57,35 @@ def test_empty_corpus_raises():
 def test_dense_dim_mismatch_raises():
     with pytest.raises(ValueError, match="dim"):
         make_index().search_dense([1.0, 0.0, 0.0], k=1)
+
+
+def test_weighted_alpha_1_matches_dense(idx):
+    q, qv = "alpha beta", [1.0, 0.0]
+    assert [c["rule_id"] for c in idx.search_weighted(q, qv, alpha=1.0, k=3)] == [
+        c["rule_id"] for c in idx.search_dense(qv, 3)
+    ]
+
+
+def test_weighted_alpha_0_matches_bm25(idx):
+    q, qv = "alpha beta", [1.0, 0.0]
+    assert [c["rule_id"] for c in idx.search_weighted(q, qv, alpha=0.0, k=3)] == [
+        c["rule_id"] for c in idx.search_bm25(q, 3)
+    ]
+
+
+def test_weighted_boundaries_with_real_bm25_signal(idx):
+    # "cat sat" appears only in A 1, ensuring BM25 differentiates chunks
+    q, qv = "cat sat", [1.0, 0.0]
+
+    # Verify real BM25 signal: scores must differentiate the corpus, not tie at 0.0
+    assert len(set(idx._bm25_scores(q))) > 1, "Query must differentiate the corpus"
+
+    # alpha=0.0: should match pure BM25
+    assert [c["rule_id"] for c in idx.search_weighted(q, qv, alpha=0.0, k=3)] == [
+        c["rule_id"] for c in idx.search_bm25(q, 3)
+    ]
+
+    # alpha=1.0: should match pure dense (qv = [1.0, 0.0] matches A 1's vector)
+    assert [c["rule_id"] for c in idx.search_weighted(q, qv, alpha=1.0, k=3)] == [
+        c["rule_id"] for c in idx.search_dense(qv, 3)
+    ]

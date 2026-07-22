@@ -36,16 +36,16 @@ class Index:
         self._df = Counter(term for d in docs for term in set(d))
 
     @classmethod
-    def load(cls, data_dir: Path) -> "Index":
+    def load(cls, data_dir: Path, embeddings_dir: str = "embeddings") -> "Index":
         chunk_files = sorted((data_dir / "chunks").glob("*.jsonl"))
         if not chunk_files:
             raise FileNotFoundError("no chunk files in data/chunks — run python -m sentinel.ingest first")
         chunks: list[dict] = []
         vectors: list[list[float]] = []
         for cf in chunk_files:
-            ef = data_dir / "embeddings" / cf.name
+            ef = data_dir / embeddings_dir / cf.name
             if not ef.exists():
-                raise FileNotFoundError(f"{ef} missing — run python -m sentinel.embed")
+                raise FileNotFoundError(f"{ef} missing — run python -m sentinel.embed (or python -m sentinel.blurbs for the ctx arm)")
             emb = {r["rule_id"]: r["vector"] for r in _read_jsonl(ef)}
             for c in _read_jsonl(cf):
                 if c["rule_id"] not in emb:
@@ -66,6 +66,14 @@ class Index:
             for rank, i in enumerate(self._top(scores, len(fused))):
                 fused[i] += 1.0 / (RRF_K + rank + 1)
         return [self.chunks[i] for i in self._top(fused, k)]
+
+    def search_weighted(self, query: str, query_vector: list[float], alpha: float = 0.5, k: int = 10) -> list[dict]:
+        def norm(scores: list[float]) -> list[float]:
+            lo, hi = min(scores), max(scores)
+            return [(s - lo) / (hi - lo) if hi > lo else 0.0 for s in scores]
+
+        bm25, dense = norm(self._bm25_scores(query)), norm(self._dense_scores(query_vector))
+        return [self.chunks[i] for i in self._top([alpha * d + (1 - alpha) * b for b, d in zip(bm25, dense)], k)]
 
     def _bm25_scores(self, query: str) -> list[float]:
         n = len(self.chunks)
