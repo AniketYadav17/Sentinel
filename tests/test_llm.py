@@ -76,3 +76,10 @@ def test_non_json_output_raises_with_payload(env, monkeypatch):
     monkeypatch.setattr(llm.urllib.request, "urlopen", lambda req, timeout: _resp(_gemini_ok("not json{")))
     with pytest.raises(RuntimeError, match="not json"):
         llm.generate_json("p", SCHEMA)
+
+
+def test_blocked_candidate_raises_loudly(env, monkeypatch):
+    monkeypatch.setattr(llm.urllib.request, "urlopen",
+                        lambda req, timeout: _resp({"candidates": [{"finishReason": "SAFETY"}]}))
+    with pytest.raises(RuntimeError, match="SAFETY"):
+        llm.generate_json("p", SCHEMA)

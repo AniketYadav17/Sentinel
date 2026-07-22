@@ -52,7 +52,10 @@ def generate_json(prompt: str, schema: dict, *, cache: bool = True) -> dict:
     candidates = payload.get("candidates") or []
     if not candidates:
         raise RuntimeError(f"Gemini returned no candidates: {json.dumps(payload)[:500]}")
-    text = candidates[0]["content"]["parts"][0]["text"]
+    try:
+        text = candidates[0]["content"]["parts"][0]["text"]
+    except (KeyError, IndexError):
+        raise RuntimeError(f"Gemini candidate has no text (finishReason?): {json.dumps(payload)[:500]}") from None
     try:
         result = json.loads(text)
     except json.JSONDecodeError:
