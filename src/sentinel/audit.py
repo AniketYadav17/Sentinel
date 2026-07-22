@@ -5,10 +5,7 @@ JSON report on stdout, human summary on stderr. Pauses for human input when any
 claim is needs_review or low-confidence (in-process; sqlite resume is Phase 4).
 """
 
-import argparse
-import json
 import operator
-import sys
 from pathlib import Path
 from typing import Annotated, TypedDict
 
@@ -158,38 +155,3 @@ def default_searcher():
     return lambda claim: index.search_dense(embed_texts([claim], "RETRIEVAL_QUERY")[0], TOP_K)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Audit a communication against the FCA Handbook (CONC).")
-    parser.add_argument("text", nargs="?", help="communication text to audit")
-    parser.add_argument("--channel", default="promo_email", help="communication channel (default: promo_email)")
-    parser.add_argument("--file", help="read the communication text from this file instead of the positional arg")
-    args = parser.parse_args()
-
-    if args.file:
-        text = Path(args.file).read_text(encoding="utf-8")
-    elif args.text:
-        text = args.text
-    else:
-        parser.error("provide either TEXT or --file")
-
-    graph = build_graph(default_searcher())
-    config = {"configurable": {"thread_id": "cli"}}
-    state = graph.invoke({"text": text, "channel": args.channel}, config)
-
-    if "__interrupt__" in state:
-        pending = state["__interrupt__"][0].value["pending"]
-        print("Human review required for the following claims:", file=sys.stderr)
-        resolutions: dict[str, str] = {}
-        for item in pending:
-            print(f"\n[{item['index']}] {item['claim']}", file=sys.stderr)
-            print(f"    judged: {item['judged']}", file=sys.stderr)
-            verdict = input(f"    verdict (breach/compliant/needs_review) [{item['judged']['verdict']}]: ").strip()
-            resolutions[str(item["index"])] = verdict or item["judged"]["verdict"]
-        state = graph.invoke(Command(resume=resolutions), config)
-
-    print(json.dumps(state["report"], indent=2))
-    print(f"\nOverall: {state['report']['overall']}", file=sys.stderr)
-
-
-if __name__ == "__main__":
-    main()
