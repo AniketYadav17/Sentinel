@@ -7,6 +7,8 @@ from langgraph.types import Command
 
 
 def e2e_rows(examples: list[dict], run_example) -> dict:
+    if not examples:
+        return {"n": 0, "overall_accuracy": 0.0, "mean_claim_delta": 0.0}
     hits, deltas = [], []
     for ex in examples:
         report = run_example(ex)

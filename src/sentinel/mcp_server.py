@@ -5,6 +5,7 @@ Dense mode needs GEMINI_API_KEY for query embedding; bm25 mode is fully offline.
 """
 
 from pathlib import Path
+from typing import Literal
 
 from mcp.server.fastmcp import FastMCP
 
@@ -13,7 +14,7 @@ def make_server(index) -> FastMCP:
     server = FastMCP("fca-handbook")
 
     @server.tool()
-    def search_handbook(query: str, mode: str = "dense", k: int = 5) -> list[dict]:
+    def search_handbook(query: str, mode: Literal["dense", "bm25"] = "dense", k: int = 5) -> list[dict]:
         """Search FCA Handbook provisions. mode: dense (semantic, needs GEMINI_API_KEY) or bm25 (offline)."""
         if mode == "dense":
             from sentinel.embed import embed_texts

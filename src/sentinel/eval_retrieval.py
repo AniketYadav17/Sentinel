@@ -113,10 +113,8 @@ def main() -> None:
 
     if args.mode == "weighted-sweep":
         modes = ("weighted",)
-        alphas = [i / 10 for i in range(11)]
     else:
         modes = ("bm25", "dense", "hybrid", "weighted") if args.mode == "all" else (args.mode,)
-        alphas = [args.alpha]
 
     # Build lazy-loading index map: only load indexes when modes require them
     indexes: dict[str, Index] = {}
@@ -125,10 +123,8 @@ def main() -> None:
     if "dense-ctx" in modes:
         indexes["ctx"] = Index.load(root / "data", embeddings_dir="embeddings_ctx")
 
-    # Use the first available index to load claims
+    # Use the first available index to load claims (every argparse mode populates one)
     corpus_index = indexes.get("ctx") or indexes.get("default")
-    if corpus_index is None:
-        sys.exit("no valid mode specified")
 
     claims, skipped = load_claims(root / "evals" / "golden.jsonl", {c["rule_id"] for c in corpus_index.chunks})
     if not claims:
@@ -144,7 +140,7 @@ def main() -> None:
 
     if args.mode == "weighted-sweep":
         print("\nweighted-sweep results (alpha tuned on the golden set — overfitting risk, see spec):")
-        for alpha in alphas:
+        for alpha in [i / 10 for i in range(11)]:
             rows = [
                 score(c["relevant"], retrieve(indexes["default"], "weighted", c["query"], v, alpha=alpha)) | {"area": c["area"]}
                 for c, v in zip(claims, vectors)

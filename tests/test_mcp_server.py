@@ -41,7 +41,7 @@ def test_search_handbook_bm25_dispatch():
 
 def test_search_handbook_unknown_mode_raises():
     server = make_server(FakeIndex())
-    with pytest.raises(Exception, match="unknown mode"):
+    with pytest.raises(Exception, match="Input should be 'dense' or 'bm25'|unknown mode"):
         asyncio.run(server.call_tool("search_handbook", {"query": "q", "mode": "nope"}))
 
 

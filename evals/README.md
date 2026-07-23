@@ -101,3 +101,36 @@ Reading the confusion matrix like an auditor:
   the spec predicted: when the right rule is retrieved, the judge almost
   always cites it. Better citations require better retrieval, not a better
   judge — which is what the trade-off table above is for.
+
+## End-to-end + Ragas (2026-07-23)
+
+**End-to-end** (`--mode e2e`, full graph per example, 56 examples,
+example-level scoring): **overall-verdict accuracy 0.571**, mean claim-count
+delta 1.95. Read against the judge's per-component 0.794: the ~22-point drop
+is the measured cost of the decomposer (its claims differ from the golden
+decomposition by ~2 per example) plus worst-case aggregation (one spurious
+breach-judged claim flips the whole example). The per-component/e2e split
+exists precisely to attribute this: the next e2e lever is the decomposer
+prompt, not the judge.
+
+**Ragas** (`--mode ragas`, 50 sampled rationales, faithfulness + context
+precision without reference): **faithfulness 0.183, context precision 0.539.**
+The faithfulness number needs honest interpretation before anyone panics:
+Ragas assumes a QA task where the response derives from the retrieved
+contexts. A compliance rationale necessarily also references the *claim under
+assessment* ("the claim states no credit check impact…"), which is not in the
+retrieved provisions — so Ragas scores those statements as unsupported by
+construction, and the ~.5 retrieval ceiling further deflates it. Context
+precision (.539) tracks retrieval quality, consistent with the trade-off
+table. Conclusion recorded rather than hidden: **off-the-shelf faithfulness
+mis-measures this task shape**; the deterministic judge-accuracy table above
+(exact ground truth, hand-labelled) is the primary metric by design, and a
+task-shaped faithfulness variant (rationale vs provisions *and* claim) is a
+Phase 4 candidate. Compat note: ragas 0.4.3 requires `langchain-community<0.4`
+(it imports a module removed in 0.4) — constrained in the `evals-llm` group.
+
+**Demo transcript** (`python -m sentinel.audit "Get a loan in 5 minutes! No
+credit check impact!"`): decomposed into 2 claims, both judged breach/high —
+citing CONC 3.3.3R/3.3.4G for the 5-minutes claim and CONC 3.6.8R (the "no
+credit checks" restriction) for the credit-check claim — JSON report on
+stdout, summary on stderr, no human-review interrupt (both high confidence).

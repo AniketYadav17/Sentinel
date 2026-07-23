@@ -18,7 +18,7 @@ def make_index() -> Index:
 
 @pytest.fixture
 def idx() -> Index:
-    return Index(CHUNKS, VECS)
+    return make_index()
 
 
 def test_tokenize_lowercases_and_strips_punctuation():

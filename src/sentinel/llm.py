@@ -19,7 +19,7 @@ CACHE_DIR = Path(__file__).parents[2] / "data" / "cache" / "llm"
 
 def generate_json(prompt: str, schema: dict, *, cache: bool = True) -> dict:
     """One structured-output call: prompt + responseSchema -> parsed JSON object."""
-    key_material = MODEL + prompt + json.dumps(schema, sort_keys=True)
+    key_material = "\x00".join((MODEL, prompt, json.dumps(schema, sort_keys=True)))  # separator kills prompt/schema boundary ambiguity
     cache_path = CACHE_DIR / (hashlib.sha256(key_material.encode()).hexdigest() + ".json")
     if cache and cache_path.exists():
         return json.loads(cache_path.read_text(encoding="utf-8"))

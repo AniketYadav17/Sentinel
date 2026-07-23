@@ -7,7 +7,7 @@ authors = [
     { name = "Aniket", email = "41797865+AniketYadav17@users.noreply.github.com" }
 ]
 requires-python = ">=3.12"
-dependencies = ["langgraph>=0.4"]
+dependencies = ["langgraph>=0.4,<2"]
 
 [build-system]
 requires = ["uv_build>=0.11.19,<0.12.0"]
@@ -18,12 +18,14 @@ dev = [
     "pytest>=9.1.1",
 ]
 mcp = [
-    "mcp>=1.2",
+    # tests rely on call_tool's (content, structured) return, present in the verified 1.28 line
+    "mcp>=1.28",
 ]
 rerank = [
     "sentence-transformers>=3",
 ]
 evals-llm = [
-    "ragas>=0.2",
+    "ragas>=0.4",
+    "langchain-community<0.4",
     "langchain-google-genai>=2",
 ]
