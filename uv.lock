@@ -2788,6 +2788,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "langgraph" },
+    { name = "pydantic" },
 ]
 
 [package.dev-dependencies]
@@ -2807,7 +2808,10 @@ rerank = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "langgraph", specifier = ">=0.4,<2" }]
+requires-dist = [
+    { name = "langgraph", specifier = ">=0.4,<2" },
+    { name = "pydantic", specifier = ">=2" },
+]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=9.1.1" }]
