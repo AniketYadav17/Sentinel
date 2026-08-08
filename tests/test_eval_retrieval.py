@@ -1,3 +1,4 @@
+import hashlib
 import json
 
 import pytest
@@ -88,3 +89,22 @@ def test_query_vectors_caches_and_reuses(tmp_path, monkeypatch):
     second = query_vectors(["q1", "q2", "q3"], cache)  # only q3 is a miss
     assert second == [[1.0, 0.0]] * 3
     assert calls == [["q1", "q2"], ["q3"]]
+
+
+def test_query_vector_cache_key_is_model_and_dim_scoped(tmp_path, monkeypatch):
+    """A vector cached under the pre-fix text-only key must NOT be served after the fix."""
+    calls = []
+
+    def fake_embed(texts, task_type):
+        calls.append(list(texts))
+        return [[1.0, 0.0]] * len(texts)
+
+    monkeypatch.setattr("sentinel.eval_retrieval.embed_texts", fake_embed)
+    cache = tmp_path / "queries.jsonl"
+    stale_key = hashlib.sha256("q1".encode()).hexdigest()  # old key scheme: text only
+    cache.write_text(json.dumps({"sha": stale_key, "vector": [9.9, 9.9]}) + "\n", encoding="utf-8")
+
+    vectors = query_vectors(["q1"], cache)
+
+    assert calls == [["q1"]]        # stale entry was a miss -> re-embedded
+    assert vectors == [[1.0, 0.0]]  # the stale vector was never served

@@ -12,7 +12,7 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-from sentinel.embed import embed_texts
+from sentinel.embed import DIM, MODEL as EMBED_MODEL, embed_texts
 from sentinel.index import Index
 from sentinel.rerank import rerank, RERANK_POOL
 
@@ -70,7 +70,8 @@ def retrieve(index: Index, mode: str, query: str, query_vector, k: int = 10, alp
 
 def query_vectors(queries: list[str], cache_path: Path) -> list[list[float]]:
     """Embed queries with a sha256-keyed JSONL cache so re-runs are offline."""
-    sha = lambda text: hashlib.sha256(text.encode()).hexdigest()
+    # key includes model+dim: a provider/dim swap must invalidate, not silently serve stale vectors
+    sha = lambda text: hashlib.sha256(f"{EMBED_MODEL}\x00{DIM}\x00{text}".encode()).hexdigest()
     cache: dict[str, list[float]] = {}
     if cache_path.exists():
         for line in cache_path.read_text(encoding="utf-8").splitlines():
