@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 import sentinel.audit as audit
@@ -132,3 +134,10 @@ def test_judge_prompt_wraps_claim_and_neutralizes_smuggled_tag():
     assert "<untrusted_claim>" in prompt
     assert prompt.count("</untrusted_claim>") == 1
     assert "[stripped-delimiter]" in prompt
+
+
+def test_main_rejects_out_of_scope_channel(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["audit", "some promo text", "--channel", "support_reply"])
+    with pytest.raises(SystemExit):
+        audit.main()
+    assert "invalid choice" in capsys.readouterr().err
