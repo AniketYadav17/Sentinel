@@ -11,7 +11,7 @@ import os
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from sentinel.audit import JUDGE_SCHEMA, TOP_K, judge_prompt, judgement_from_llm
+from sentinel.audit import JUDGE_SCHEMA, TOP_K, judge_prompt
 from sentinel.eval_retrieval import normalize_rule_id, query_vectors
 from sentinel.index import Index
 from sentinel.llm import generate_json
@@ -27,7 +27,7 @@ def load_golden_claims(path: Path) -> list[dict]:
             continue
         ex = json.loads(line)
         for c in ex["claims"]:
-            out.append({"claim": c["claim"], "verdict": c["verdict"], "severity": c["severity"],
+            out.append({"claim": c["claim"], "verdict": c["verdict"],
                         "rules": c["rules"], "area": ex["area"], "channel": ex["channel"],
                         "input_text": ex["input_text"]})
     return out
@@ -43,7 +43,6 @@ def judge_metrics(rows: list[dict]) -> dict:
         pred_n = sum(c for (_, p), c in confusion.items() if p == v)
         per_class[v] = {"recall": tp / gold_n if gold_n else 0.0,
                         "precision": tp / pred_n if pred_n else 0.0, "n": gold_n}
-    agreed_breach = [r for r in rows if r["gold"]["verdict"] == r["pred"]["verdict"] == "breach"]
     cited = [r for r in rows if r["gold_rules_norm"]]
     by_area = defaultdict(list)
     for r in rows:
@@ -53,8 +52,6 @@ def judge_metrics(rows: list[dict]) -> dict:
         "accuracy": (sum(r["gold"]["verdict"] == r["pred"]["verdict"] for r in rows) / n) if n else 0.0,
         "confusion": dict(confusion),
         "per_class": per_class,
-        "severity_agreement": (sum(r["gold"]["severity"] == r["pred"]["severity"] for r in agreed_breach)
-                               / len(agreed_breach)) if agreed_breach else 0.0,
         "citation_hit": (sum(bool(r["gold_rules_norm"] & {normalize_rule_id(x) for x in r["pred"]["rule_ids"]})
                              for r in cited) / len(cited)) if cited else 0.0,
         "by_area": {a: sum(v) / len(v) for a, v in sorted(by_area.items())},
@@ -63,7 +60,7 @@ def judge_metrics(rows: list[dict]) -> dict:
 
 def print_metrics(m: dict) -> None:
     print(f"\n== judge accuracy ({m['n']} claims) ==")
-    print(f"accuracy {m['accuracy']:.3f}  severity_agreement {m['severity_agreement']:.3f}  citation_hit {m['citation_hit']:.3f}")
+    print(f"accuracy {m['accuracy']:.3f}  citation_hit {m['citation_hit']:.3f}")
     for v, s in m["per_class"].items():
         print(f"  {v:<13} precision {s['precision']:.3f}  recall {s['recall']:.3f}  (n={s['n']})")
     print("  confusion (gold -> pred):", {f"{g}->{p}": c for (g, p), c in sorted(m["confusion"].items())})
@@ -82,8 +79,8 @@ def run_judge_mode(root: Path) -> None:
     with tmp.open("w", encoding="utf-8") as f:
         for c, v in zip(claims, vectors):
             provisions = index.search_dense(v, TOP_K)
-            pred = judgement_from_llm(generate_json(judge_prompt(c["claim"], c["channel"], c["input_text"], provisions), JUDGE_SCHEMA))
-            row = {"gold": {"verdict": c["verdict"], "severity": c["severity"]}, "pred": pred,
+            pred = generate_json(judge_prompt(c["claim"], c["channel"], c["input_text"], provisions), JUDGE_SCHEMA)
+            row = {"gold": {"verdict": c["verdict"]}, "pred": pred,
                    "gold_rules_norm": {normalize_rule_id(r) for r in c["rules"]}, "area": c["area"]}
             rows.append(row)
             f.write(json.dumps({"claim": c["claim"], "pred": pred, "area": c["area"],

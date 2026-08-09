@@ -38,12 +38,11 @@ JUDGE_SCHEMA = {
     "type": "OBJECT",
     "properties": {
         "verdict": {"type": "STRING", "enum": ["breach", "compliant", "needs_review"]},
-        "severity": {"type": "STRING", "enum": ["high", "medium", "low", "none"]},
         "rule_ids": {"type": "ARRAY", "items": {"type": "STRING"}},
         "rationale": {"type": "STRING"},
         "confidence": {"type": "STRING", "enum": ["high", "medium", "low"]},
     },
-    "required": ["verdict", "severity", "rule_ids", "rationale", "confidence"],
+    "required": ["verdict", "rule_ids", "rationale", "confidence"],
 }
 
 
@@ -51,7 +50,6 @@ class Judgement(BaseModel):
     """Provider-agnostic validation of judge output — the API-side responseSchema is not trusted alone."""
 
     verdict: Literal["breach", "compliant", "needs_review"]
-    severity: Literal["high", "medium", "low", "none"]
     rule_ids: list[str]
     rationale: str
     confidence: Literal["high", "medium", "low"]
@@ -89,16 +87,9 @@ def judge_prompt(claim: str, channel: str, text: str, provisions: list[dict]) ->
         f"Candidate provisions (cite rule ids ONLY from this list):\n{rules}\n\n"
         "Verdict rules: 'breach' if the claim likely violates a cited provision; 'compliant' if it"
         " clearly does not; 'needs_review' if the determination cannot be made from text alone"
-        " (e.g. prominence). severity: high/medium/low for breaches, else 'none'."
+        " (e.g. prominence)."
         " rationale: at most 2 sentences. confidence: your confidence in the verdict."
     )
-
-
-def judgement_from_llm(raw: dict) -> dict:
-    out = dict(raw)
-    if out.get("severity") == "none":
-        out["severity"] = None
-    return out
 
 
 def worst_case(verdicts: list[str]) -> str:
@@ -131,7 +122,7 @@ def build_graph(searcher):
     def judge_claim(payload: dict) -> dict:
         provisions = searcher(payload["claim"])
         raw = generate_json(judge_prompt(payload["claim"], payload["channel"], payload["text"], provisions), JUDGE_SCHEMA)
-        judged = judgement_from_llm(Judgement.model_validate(raw).model_dump())
+        judged = Judgement.model_validate(raw).model_dump()
         cited = {normalize_rule_id(r) for r in judged["rule_ids"]}
         if not cited <= {p["rule_id"] for p in provisions}:
             judged["grounding"] = "unverified"  # cited a rule it was never shown — a human decides, never a retry
@@ -188,7 +179,7 @@ def format_summary(report: dict) -> str:
     for c in report["claims"]:
         rules = ", ".join(c["rule_ids"]) or "-"
         who = " (human)" if c.get("resolved_by") == "human" else ""
-        lines.append(f"  [{c['verdict']}{who}] {c['claim']}  rules: {rules}  severity: {c['severity']}")
+        lines.append(f"  [{c['verdict']}{who}] {c['claim']}  rules: {rules}")
     return "\n".join(lines)
 
 

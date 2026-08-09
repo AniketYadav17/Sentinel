@@ -30,9 +30,9 @@ def run(graph, text="No credit check impact!", channel="promo_email"):
     return state, config
 
 
-J_BREACH = {"verdict": "breach", "severity": "high", "rule_ids": ["CONC 3.3.1R"], "rationale": "r", "confidence": "high"}
-J_OK = {"verdict": "compliant", "severity": "none", "rule_ids": [], "rationale": "r", "confidence": "high"}
-J_LOW = {"verdict": "compliant", "severity": "none", "rule_ids": [], "rationale": "r", "confidence": "low"}
+J_BREACH = {"verdict": "breach", "rule_ids": ["CONC 3.3.1R"], "rationale": "r", "confidence": "high"}
+J_OK = {"verdict": "compliant", "rule_ids": [], "rationale": "r", "confidence": "high"}
+J_LOW = {"verdict": "compliant", "rule_ids": [], "rationale": "r", "confidence": "low"}
 
 
 def test_happy_path_no_interrupt(monkeypatch):
@@ -40,11 +40,6 @@ def test_happy_path_no_interrupt(monkeypatch):
     state, _ = run(g)
     assert state["report"]["overall"] == "breach"
     assert len(state["report"]["claims"]) == 2
-    assert state["report"]["claims"][0]["severity"] in ("high", None)  # none-mapping applied somewhere
-
-
-def test_severity_none_maps_to_null(monkeypatch):
-    assert audit.judgement_from_llm(dict(J_OK))["severity"] is None
 
 
 def test_worst_case_ordering():
@@ -75,15 +70,15 @@ def test_untrusted_delimiting_in_prompts(monkeypatch):
 
 
 def test_apply_resolutions_recomputes_overall():
-    report = {"overall": "needs_review", "claims": [{"claim": "c", "verdict": "needs_review", "severity": None, "rule_ids": [], "rationale": "r", "confidence": "low"}]}
+    report = {"overall": "needs_review", "claims": [{"claim": "c", "verdict": "needs_review", "rule_ids": [], "rationale": "r", "confidence": "low"}]}
     out = audit._apply_resolutions(report, {"0": "compliant"})
     assert out["overall"] == "compliant" and out["claims"][0]["resolved_by"] == "human"
 
 
 def test_format_summary_lists_claims():
     report = {"overall": "breach", "claims": [
-        {"claim": "c1", "verdict": "breach", "severity": "high", "rule_ids": ["CONC 3.3.1R"], "rationale": "r", "confidence": "high"},
-        {"claim": "c2", "verdict": "compliant", "severity": None, "rule_ids": [], "rationale": "r", "confidence": "high"},
+        {"claim": "c1", "verdict": "breach", "rule_ids": ["CONC 3.3.1R"], "rationale": "r", "confidence": "high"},
+        {"claim": "c2", "verdict": "compliant", "rule_ids": [], "rationale": "r", "confidence": "high"},
     ]}
     s = audit.format_summary(report)
     assert "OVERALL: breach" in s and "CONC 3.3.1R" in s and "c2" in s
@@ -143,7 +138,7 @@ def test_main_rejects_out_of_scope_channel(monkeypatch, capsys):
     assert "invalid choice" in capsys.readouterr().err
 
 
-J_UNGROUNDED = {"verdict": "breach", "severity": "high", "rule_ids": ["CONC 9.9.9R"], "rationale": "r", "confidence": "high"}
+J_UNGROUNDED = {"verdict": "breach", "rule_ids": ["CONC 9.9.9R"], "rationale": "r", "confidence": "high"}
 
 
 def test_ungrounded_citation_routes_to_gate(monkeypatch):
@@ -165,7 +160,7 @@ def test_grounded_citation_passes_clean(monkeypatch):
 def test_malformed_judgement_fails_loud(monkeypatch):
     from pydantic import ValidationError
 
-    bad = {"verdict": "maybe", "severity": "high", "rule_ids": [], "rationale": "r", "confidence": "high"}
+    bad = {"verdict": "maybe", "rule_ids": [], "rationale": "r", "confidence": "high"}
     g = graph_for(monkeypatch, [{"claims": [{"claim": "c1"}]}, bad])
     with pytest.raises(ValidationError):
         run(g)
