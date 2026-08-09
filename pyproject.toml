@@ -1,7 +1,7 @@
 [project]
 name = "sentinel"
 version = "0.1.0"
-description = "Audits fintech customer communications against the FCA Handbook — eval-gated agentic RAG"
+description = "Audits fintech financial promotions against the FCA Handbook — eval-gated agentic RAG"
 readme = "README.md"
 authors = [
     { name = "Aniket", email = "41797865+AniketYadav17@users.noreply.github.com" }
