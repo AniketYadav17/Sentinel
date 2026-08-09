@@ -1,136 +1,82 @@
 # Golden dataset
 
-Hand-labelled audit examples used as ground truth for every eval in this repo (retrieval quality, judge accuracy, end-to-end). Built *before* the pipeline, on purpose: the pipeline gets graded against this, never the other way round.
+FCA-sourced audit examples used as ground truth for every eval in this repo. v2 (2026-08)
+replaces a v1 set whose labels were LLM-generated end to end and never human-adjudicated —
+its headline numbers measured cross-model agreement, not accuracy, so the set and the
+numbers were removed together (see git history). The lesson v2 encodes: **provenance, not
+syntheticity, is what makes a label trustworthy** — the FCA's own published examples are
+explicitly fictitious, yet authoritative, because the FCA wrote them.
+
+## Sources
+
+Every label is anchored to an FCA publication via a per-claim `label_authority` block:
+
+- [Dear CEO letter: financial promotions of high-cost lending products, 6 May 2022](https://www.fca.org.uk/publication/correspondence/dear-ceo-ensure-your-financial-promotions-clear-fair-not-misleading.pdf) — breach patterns with verbatim phrases mapped to named CONC rules.
+- [Car finance case study transcript](https://www.fca.org.uk/publication/documents/transcript-case-study-1-car-finance-video.pdf) — the FCA's own promotion checklist.
+- The [FCA Handbook, CONC 3](https://www.handbook.fca.org.uk/handbook/CONC/3/) live text (compliant controls cite the operative rule wording directly).
 
 ## Schema (`golden.jsonl`, one JSON object per line)
 
 | field | meaning |
 |---|---|
-| `id` | stable id, `gold-NNN` |
-| `channel` | `promo_email` \| `promo_social` \| `tnc` \| `support_reply` |
-| `input_text` | the customer communication being audited (treated as untrusted input) |
-| `claims[]` | per-claim label: `claim`, `verdict` (`breach`/`compliant`/`needs_review`), `severity` (`high`/`medium`/`low`/null), `rules` (FCA Handbook rule ids), `rationale` |
-| `overall_verdict` | worst-case of the claim verdicts |
-| `status` | `draft` → `verified` once checked against the live handbook |
-| `notes` | anything a future labeller needs |
+| `id` | stable id, `gold-1NN` (v2 numbering) |
+| `channel` | `promo_email` \| `promo_social` \| `promo_web` — promotions only, by scope decision |
+| `input_text` | the financial promotion being audited (treated as untrusted input) |
+| `claims[]` | per-claim label: `claim`, `verdict` (`breach`/`compliant`/`needs_review`), `rules`, `rationale`, `label_authority` |
+| `claims[].label_authority` | `{source, url, quote, rule_cited_by_source, verification}` — the FCA provenance for this label; `quote` is verbatim from the source |
+| `overall_verdict` | worst-case of the claim verdicts (test-enforced) |
+| `status` | `verified` = the dataset owner has personally checked this example's quotes and rule texts; `draft` = that per-example pass is pending (every label is machine-verified for provenance and twice independently reviewed regardless) |
+| `notes` | what a future re-verifier should re-check |
 
 ## Labelling protocol
 
-1. Draft labels cite rules from verified secondary sources (FCA PS15/23, G-Regs CONC checklist — both quote rule ids directly from the handbook).
-2. Drafts get an automated cross-check against live handbook text (fetched via the same API the ingestion pipeline uses); `citation_checked: true` means that pass confirmed the cited rules exist and support the verdict. It already caught real drift: secondary sources cite the pre-2020 CONC 3.5.7R numbering (the speed/ease trigger moved from 3.5.7R(3) to 3.5.7R(1)(c)).
-3. Every example is then verified by hand against the live handbook (https://www.handbook.fca.org.uk/handbook/CONC/3/) — rule text read, rule id confirmed, verdict re-judged — before `status` flips to `verified`. Corrections during this pass are expected and are the point; unresolved caveats live in `notes`.
-4. `needs_review` is a first-class verdict, not a cop-out: some determinations (e.g. prominence under CONC 3.2.3G) genuinely cannot be made from text alone. The system is supposed to route these to a human, so the golden set must contain them.
+1. **Mechanical rules only.** Every verdict must be checkable by reading the cited rule
+   text against the promotion text. Judgement calls ("is this misleading?") are out of
+   scope — the labeller is an engineer, not a compliance officer, and the dataset does
+   not pretend otherwise. Prominence questions are `needs_review` by construction
+   (`verification: "judgement"`).
+2. Each breach pattern comes from an FCA publication that names both the pattern and the
+   rule; `label_authority.quote` carries the verbatim sentence.
+3. Rule ids are verified against the live corpus text (`data/chunks/`) before citing;
+   `tests/test_golden.py` mechanically enforces the structural half of this protocol
+   (schema, worst-case aggregation, authority completeness, corpus membership).
+4. Regulation drifts: CP26/15 (2026) is consulting on exactly these CONC 3 provisions.
+   Labels are as-verified on their commit date; re-verification is the (planned)
+   freshness monitor's job.
+5. Documented conventions, each ruled on by the dataset owner:
+   (a) a payday-loan promotion is treated as high-cost short-term credit — the Dear
+   CEO letter's own framing; the Glossary's APR limb is not establishable from
+   promotion text (disclosed in the affected examples' notes);
+   (b) three example pairs (gold-109/124, gold-115/126, gold-120/125) deliberately
+   present near-identical facts with one member `compliant` and the other
+   `needs_review` — the prominence question is carried by exactly one member of
+   each pair, so overall verdicts differ by design, not by error;
+   (c) claims are per triggering statement: one promotion firing several limbs of
+   the same rule yields one claim per limb (see gold-101's three CONC 3.5.7R
+   claims);
+   (d) there is no severity field — severity was derivable from the cited rule and
+   carried no FCA authority, so it was removed rather than labelled.
 
-The handbook changes over time; rule ids in labels are as-verified on the date the example was verified. Re-verification is a job for the (planned) source-freshness monitor.
+## Coverage
 
-## Coverage so far
+26 examples / 34 claims across six areas: guaranteed-approval claims (CONC 3.3.3R),
+HCSTC risk warnings (CONC 3.4.1R), representative-APR triggers (CONC 3.5.7R/3.5.8G —
+all three limbs of 3.5.7R(1) are exercised), representative-example triggers
+(CONC 3.5.5R, car-finance checklist), broker status statements (CONC 3.7.7R), and
+prominence needs-review cases. Overall verdicts: 17 breach / 6 compliant /
+3 needs_review (claims: 25 / 6 / 3).
 
-56 draft examples across five areas: CONC 3.3 misleading promotions (payday/broker copy), CONC 3.5 rep-example and representative-APR triggers (loans/car finance), CONC 3.5.12R interest-free claims (BNPL/retail), CONC 3.3.1R comms accuracy (credit cards, support replies and T&Cs), CONC 3.4 HCSTC risk warnings. Overall verdicts: 36 breach / 11 compliant / 9 needs_review. Next: BCOBS, and adversarial/injection cases as a separate suite.
+Known coverage limits (recorded, not hidden): no example yet exercises CONC 3.5.9R
+representative-APR labelling defects, the broker-and-lender limb of CONC 3.7.7R(2),
+the transcript's second-"representative"-example pattern, a promotion omitting the
+firm's name, the image-promotion side of the CONC 3.1.7R exclusion, or the
+CONC 3.5.12R restricted expressions. Expansion is planned for the eval re-baseline,
+alongside an FCA-authored holdout extracted from FG15-04's image examples once
+multimodal extraction lands.
 
-## Retrieval metrics (trade-off study v2, 2026-07-22)
+## Metrics
 
-Scored by `python -m sentinel.eval_retrieval` — one query per golden claim,
-ground truth = the claim's cited rule ids at chunk granularity. Corpus: CONC 3
-(86 chunks, gemini-embedding-001 @ 768 dims). 199 claims scored, 0 skipped.
-v1 rows (2026-07-21) unchanged; Phase 3 adds the last four arms.
-
-| mode | recall@3 | recall@5 | recall@10 | hit@5 | MRR |
-|---|---|---|---|---|---|
-| bm25 | 0.300 | 0.398 | 0.466 | 0.497 | 0.355 |
-| dense | 0.441 | 0.497 | 0.550 | 0.573 | 0.458 |
-| hybrid (RRF) | 0.385 | 0.453 | 0.543 | 0.553 | 0.445 |
-| weighted (α=0.5) | 0.388 | 0.460 | 0.545 | 0.558 | 0.438 |
-| weighted (α=0.9, sweep best) | 0.434 | **0.513** | **0.573** | **0.583** | **0.462** |
-| rerank (cross-encoder over dense top-20) | 0.375 | 0.436 | 0.513 | 0.528 | 0.400 |
-| dense-ctx (LLM blurb + provision text) | 0.426 | 0.490 | 0.555 | 0.568 | **0.475** |
-
-What v2 says, honestly:
-
-- **Weighted fusion at α=0.9 is the only arm beating dense on both gated
-  metrics** (recall@5 .513 vs .497, MRR .462 vs .458) — but α was tuned by
-  sweeping on this same golden set, our only labelled data. The spec's
-  adoption gate ("only if it beats dense on both") is a necessary condition,
-  not a mandate: **the agent's default stays dense** until α=0.9 survives a
-  holdout (BCOBS golden examples, planned). Shipping a hyperparameter tuned
-  on the test set would fake the very rigor this project sells.
-- **The cross-encoder reranker loses to plain dense across the board**
-  (recall@5 .436). ms-marco-MiniLM is tuned for web passages; regulatory
-  provision text appears to be out-of-domain for it. Honest negative #2 for
-  the collection (after v1's hybrid result).
-- **Contextual blurbs sharpen ranking but don't widen coverage**: MRR .475
-  (best of any arm) and hit@10 .623, yet recall@5 dips .007 below dense —
-  the blurb helps rank already-found rules, not find missing ones. Fails the
-  adoption gate. Blurbs generated by `gemini-3.5-flash-lite` on 2026-07-22;
-  regeneration may vary slightly.
-- Mid-build provider event worth remembering: Google retired the 2.5
-  generation for new API keys during these runs (404 mid-eval). The loud
-  HTTP-body surfacing diagnosed it in one traceback and the single-seam
-  design made the swap one line (`llm.py`, now `gemini-3.5-flash-lite`).
-
-## Judge accuracy (v1, 2026-07-22)
-
-Scored by `python -m sentinel.eval_judge --mode judge` — the 199 golden claims
-fed straight to the judge (decomposer bypassed), dense top-5 retrieval,
-`gemini-3.5-flash-lite` @ temp 0, responses disk-cached (deterministic re-runs).
-
-| metric | value |
-|---|---|
-| verdict accuracy (3-class) | **0.794** |
-| severity agreement (on agreed breaches) | 0.755 |
-| citation hit (≥1 golden rule cited) | 0.523 |
-| breach precision / recall (n=72) | 0.803 / 0.736 |
-| compliant precision / recall (n=97) | 0.814 / 0.948 |
-| needs_review precision / recall (n=30) | 0.650 / 0.433 |
-
-Per-area accuracy: misleading-3.3 .864, hcstc-3.4 .821, comms-accuracy .769,
-interest-free-3.5.12 .762, triggers-3.5 .743.
-
-Reading the confusion matrix like an auditor:
-
-- **compliant recall .948** — the judge almost never false-flags clean copy
-  (4/97), so the system won't drown reviewers in noise.
-- **breach recall .736** — 13 of 72 breaches judged compliant is the costly
-  error direction; 6 more routed themselves to review. Phase 4's judge-prompt
-  iteration targets exactly these 13.
-- **needs_review recall .433 is the headline finding**: 17 of 30 genuinely
-  ambiguous claims got confident auto-verdicts — the judge is overconfident
-  precisely where the golden set says a human must decide. This is
-  quantitative justification for the HITL gate, and calibrating the
-  confidence signal is the top Phase 4 eval target.
-- **citation hit .523 ≈ the retrieval ceiling** (dense recall@5 .497), as
-  the spec predicted: when the right rule is retrieved, the judge almost
-  always cites it. Better citations require better retrieval, not a better
-  judge — which is what the trade-off table above is for.
-
-## End-to-end + Ragas (2026-07-23)
-
-**End-to-end** (`--mode e2e`, full graph per example, 56 examples,
-example-level scoring): **overall-verdict accuracy 0.571**, mean claim-count
-delta 1.95. Read against the judge's per-component 0.794: the ~22-point drop
-is the measured cost of the decomposer (its claims differ from the golden
-decomposition by ~2 per example) plus worst-case aggregation (one spurious
-breach-judged claim flips the whole example). The per-component/e2e split
-exists precisely to attribute this: the next e2e lever is the decomposer
-prompt, not the judge.
-
-**Ragas** (`--mode ragas`, 50 sampled rationales, faithfulness + context
-precision without reference): **faithfulness 0.183, context precision 0.539.**
-The faithfulness number needs honest interpretation before anyone panics:
-Ragas assumes a QA task where the response derives from the retrieved
-contexts. A compliance rationale necessarily also references the *claim under
-assessment* ("the claim states no credit check impact…"), which is not in the
-retrieved provisions — so Ragas scores those statements as unsupported by
-construction, and the ~.5 retrieval ceiling further deflates it. Context
-precision (.539) tracks retrieval quality, consistent with the trade-off
-table. Conclusion recorded rather than hidden: **off-the-shelf faithfulness
-mis-measures this task shape**; the deterministic judge-accuracy table above
-(exact ground truth, hand-labelled) is the primary metric by design, and a
-task-shaped faithfulness variant (rationale vs provisions *and* claim) is a
-Phase 4 candidate. Compat note: ragas 0.4.3 requires `langchain-community<0.4`
-(it imports a module removed in 0.4) — constrained in the `evals-llm` group.
-
-**Demo transcript** (`python -m sentinel.audit "Get a loan in 5 minutes! No
-credit check impact!"`): decomposed into 2 claims, both judged breach/high —
-citing CONC 3.3.3R/3.3.4G for the 5-minutes claim and CONC 3.6.8R (the "no
-credit checks" restriction) for the credit-check claim — JSON report on
-stdout, summary on stderr, no human-review interrupt (both high confidence).
+Re-baselining against this set is pending the provider swap (Gemini → Azure OpenAI) so
+the numbers are measured once, not twice. The v1 metric tables were removed with the v1
+set — quoting them against deleted ground truth would be exactly the failure mode this
+project exists to catch.
