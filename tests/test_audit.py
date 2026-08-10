@@ -21,7 +21,7 @@ def fake_generate(responses):
 
 def graph_for(monkeypatch, responses):
     monkeypatch.setattr(audit, "generate_json", fake_generate(responses))
-    return audit.build_graph(lambda claim: [PROVISION])
+    return audit.build_graph(lambda claim, k=None: [PROVISION])
 
 
 def run(graph, text="No credit check impact!", channel="promo_email"):
@@ -205,7 +205,7 @@ def test_omission_prompt_fences_and_neutralizes(monkeypatch):
 def test_omission_scan_queries_whole_promotion(monkeypatch):
     seen = []
 
-    def searcher(q):
+    def searcher(q, k=None):
         seen.append(q)
         return [PROVISION]
 
@@ -214,3 +214,41 @@ def test_omission_scan_queries_whole_promotion(monkeypatch):
     run(g)
     assert "No credit check impact!" in seen  # the scan queried the full promotion text
     assert "c1" in seen  # the judge queried the claim
+
+
+def test_omission_scan_uses_omission_top_k(monkeypatch):
+    seen = []
+
+    def searcher(q, k=audit.TOP_K):
+        seen.append((q, k))
+        return [PROVISION]
+
+    monkeypatch.setattr(audit, "generate_json", fake_generate([{"claims": [{"claim": "c1"}]}, OM_NONE, J_OK]))
+    g = audit.build_graph(searcher)
+    run(g)
+    assert ("No credit check impact!", audit.OMISSION_TOP_K) in seen  # whole-text scan uses the knob
+    assert ("c1", audit.TOP_K) in seen  # per-claim judge uses the default depth
+
+
+def test_default_searcher_uses_query_cache(monkeypatch, tmp_path):
+    calls = []
+
+    def fake_embed_texts(texts):
+        calls.append(list(texts))
+        return [[0.1, 0.2, 0.3] for _ in texts]
+
+    monkeypatch.setattr("sentinel.eval_retrieval.embed_texts", fake_embed_texts)
+    monkeypatch.setattr(audit, "QUERY_CACHE", tmp_path / "queries.jsonl")
+
+    class StubIndex:
+        def search_dense(self, vector, k):
+            return [dict(PROVISION, vector=vector, k=k)]
+
+    monkeypatch.setattr("sentinel.index.Index.load", lambda *a, **kw: StubIndex())
+
+    searcher = audit.default_searcher()
+    r1 = searcher("some claim text")
+    r2 = searcher("some claim text")
+
+    assert len(calls) == 1  # second call hit the cache — no second embed
+    assert r1 == r2

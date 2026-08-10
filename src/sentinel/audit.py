@@ -17,10 +17,12 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, Send, interrupt
 from pydantic import BaseModel
 
-from sentinel.eval_retrieval import normalize_rule_id
+from sentinel.eval_retrieval import normalize_rule_id, query_vectors
 from sentinel.llm import generate_json
 
 TOP_K = 5
+OMISSION_TOP_K = 5  # experiment knob for the controller's sweep; same value preserves today's behavior exactly
+QUERY_CACHE = Path(__file__).parents[2] / "data" / "embeddings" / "queries.jsonl"
 _RANK = {"breach": 0, "needs_review": 1, "compliant": 2}
 
 DECOMPOSE_SCHEMA = {
@@ -143,7 +145,7 @@ class AuditState(TypedDict, total=False):
 
 
 def build_graph(searcher):
-    """searcher(claim: str) -> list[dict] provision chunks (dense top-TOP_K in production)."""
+    """searcher(text: str, k: int = TOP_K) -> list[dict] provision chunks — called per-claim (k=TOP_K) and once per audit on the full promotion text (k=OMISSION_TOP_K)."""
 
     def decompose(state: AuditState) -> dict:
         raw = generate_json(decompose_prompt(state["text"], state["channel"]), DECOMPOSE_SCHEMA)
@@ -152,7 +154,7 @@ def build_graph(searcher):
         return {"claims": raw["claims"]}
 
     def omission_scan(state: AuditState) -> dict:
-        provisions = searcher(state["text"])
+        provisions = searcher(state["text"], OMISSION_TOP_K)
         raw = generate_json(omission_prompt(state["text"], state["channel"], provisions), OMISSION_SCHEMA)
         return {"claims": state["claims"] + raw["omissions"]}
 
@@ -212,11 +214,15 @@ def _apply_resolutions(report: dict, resolutions: dict) -> dict:
 
 
 def default_searcher():
-    from sentinel.embed import embed_texts
     from sentinel.index import Index
 
     index = Index.load(Path(__file__).parents[2] / "data")
-    return lambda claim: index.search_dense(embed_texts([claim])[0], TOP_K)
+
+    def searcher(text: str, k: int = TOP_K) -> list[dict]:
+        vector = query_vectors([text], QUERY_CACHE)[0]
+        return index.search_dense(vector, k)
+
+    return searcher
 
 
 def format_summary(report: dict) -> str:
