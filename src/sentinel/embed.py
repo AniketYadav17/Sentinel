@@ -46,6 +46,11 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
                     time.sleep(int(e.headers.get("Retry-After") or 60))
                     continue
                 raise RuntimeError(f"Azure OpenAI HTTP {e.code}: {e.read().decode(errors='replace')}") from None
+            except urllib.error.URLError as e:
+                if attempt == 1:
+                    time.sleep(5)  # transient connection drops kill long runs; one retry, then loud
+                    continue
+                raise RuntimeError(f"Azure OpenAI network failure after retry: {e.reason}") from None
         embeddings = payload.get("data") or []
         if len(embeddings) != len(batch):
             raise RuntimeError(f"Azure OpenAI returned {len(embeddings)} embeddings for {len(batch)} texts")

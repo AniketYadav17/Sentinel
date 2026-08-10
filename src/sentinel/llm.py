@@ -55,6 +55,11 @@ def generate_json(prompt: str, schema: dict, *, cache: bool = True) -> dict:
                 time.sleep(int(e.headers.get("Retry-After") or 60))
                 continue
             raise RuntimeError(f"Azure OpenAI HTTP {e.code}: {e.read().decode(errors='replace')}") from None
+        except urllib.error.URLError as e:
+            if attempt == 1:
+                time.sleep(5)  # transient connection drops kill long runs; one retry, then loud
+                continue
+            raise RuntimeError(f"Azure OpenAI network failure after retry: {e.reason}") from None
     choices = payload.get("choices") or []
     if not choices:
         raise RuntimeError(f"Azure OpenAI returned no choices: {json.dumps(payload)[:500]}")

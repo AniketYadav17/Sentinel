@@ -127,3 +127,34 @@ def test_finish_reason_length_raises(env, monkeypatch):
     monkeypatch.setattr(llm.urllib.request, "urlopen", lambda req, timeout: _resp(payload))
     with pytest.raises(RuntimeError, match="length"):
         llm.generate_json("p", SCHEMA)
+
+
+def test_retries_once_on_connection_error(env, monkeypatch):
+    sleeps = []
+    calls = []
+
+    def flaky(req, timeout):
+        calls.append(1)
+        if len(calls) == 1:
+            raise urllib.error.URLError(TimeoutError("timed out"))
+        return _resp(_azure_ok('{"x": "ok"}'))
+
+    monkeypatch.setattr(llm.urllib.request, "urlopen", flaky)
+    monkeypatch.setattr(llm.time, "sleep", sleeps.append)
+    assert llm.generate_json("p-conn-retry", SCHEMA, cache=False) == {"x": "ok"}
+    assert sleeps == [5]
+    assert len(calls) == 2
+
+
+def test_connection_error_raises_after_retry(env, monkeypatch):
+    calls = []
+
+    def broken(req, timeout):
+        calls.append(1)
+        raise urllib.error.URLError(TimeoutError("timed out"))
+
+    monkeypatch.setattr(llm.urllib.request, "urlopen", broken)
+    monkeypatch.setattr(llm.time, "sleep", lambda s: None)
+    with pytest.raises(RuntimeError, match="network failure"):
+        llm.generate_json("p-conn-fail", SCHEMA, cache=False)
+    assert len(calls) == 2

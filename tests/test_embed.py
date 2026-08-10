@@ -105,3 +105,36 @@ def test_http_error_surfaces_response_body(monkeypatch):
     monkeypatch.setattr("sentinel.embed.urllib.request.urlopen", fake)
     with pytest.raises(RuntimeError, match="bad dim"):
         embed_texts(["hello"])
+
+
+def test_retries_once_on_connection_error(monkeypatch):
+    _azure_env(monkeypatch)
+    sleeps = []
+    monkeypatch.setattr("sentinel.embed.time.sleep", sleeps.append)
+    attempts = []
+
+    def fake(req, timeout=None):
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise urllib.error.URLError(TimeoutError("timed out"))
+        return io.BytesIO(json.dumps({"data": [{"embedding": [3.0, 4.0]}]}).encode())
+
+    monkeypatch.setattr("sentinel.embed.urllib.request.urlopen", fake)
+    assert embed_texts(["hello"]) == [[0.6, 0.8]]
+    assert sleeps == [5]
+    assert len(attempts) == 2
+
+
+def test_connection_error_raises_after_retry(monkeypatch):
+    _azure_env(monkeypatch)
+    monkeypatch.setattr("sentinel.embed.time.sleep", lambda s: None)
+    attempts = []
+
+    def fake(req, timeout=None):
+        attempts.append(1)
+        raise urllib.error.URLError(TimeoutError("timed out"))
+
+    monkeypatch.setattr("sentinel.embed.urllib.request.urlopen", fake)
+    with pytest.raises(RuntimeError, match="network failure"):
+        embed_texts(["hello"])
+    assert len(attempts) == 2
