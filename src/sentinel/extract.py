@@ -16,6 +16,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+MODEL = "gpt-4.1-mini"  # cache-key identity — the real model behind sentinel-judge, not the deployment alias; bump alongside llm.py's MODEL on a provider swap
 CACHE_DIR = Path(__file__).parents[2] / "data" / "cache" / "extract"
 
 SUPPORTED_EXTENSIONS = {"jpg": "jpeg", "jpeg": "jpeg", "png": "png", "gif": "gif", "webp": "webp"}
@@ -37,11 +38,12 @@ def annotate_image(path: Path) -> str:
     media_type = SUPPORTED_EXTENSIONS.get(ext)
     if media_type is None:
         raise SystemExit(
-            f"{path}: unsupported image extension {ext!r} — convert to png first —"
-            " jp2 unsupported by the vision API"
+            f"{path}: unsupported image extension {ext!r} — convert to png first"
+            f" ({ext!r} unsupported by the vision API)"
         )
     data = path.read_bytes()
-    cache_path = CACHE_DIR / (hashlib.sha256(data).hexdigest() + ".txt")
+    key_material = MODEL.encode() + b"\x00" + ANNOTATE_PROMPT.encode() + b"\x00" + data
+    cache_path = CACHE_DIR / (hashlib.sha256(key_material).hexdigest() + ".txt")
     if cache_path.exists():
         return cache_path.read_text(encoding="utf-8")
     endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT") or sys.exit(

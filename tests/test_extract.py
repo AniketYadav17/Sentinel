@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import json
 from io import BytesIO
 
@@ -81,10 +82,30 @@ def test_cache_hit_skips_network(env, png_file, monkeypatch):
     assert first == second == "annotated text"
 
 
+def test_cache_key_is_model_and_prompt_scoped(env, png_file, monkeypatch):
+    """An entry cached under the pre-fix bytes-only key must NOT be served after the fix."""
+    calls = []
+
+    def fake(req, timeout):
+        calls.append(1)
+        return _resp(_azure_ok("fresh annotation"))
+
+    stale_key = hashlib.sha256(PNG_BYTES).hexdigest()  # old key scheme: file bytes only
+    cache_dir = extract.CACHE_DIR
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    (cache_dir / (stale_key + ".txt")).write_text("stale annotation", encoding="utf-8")
+
+    monkeypatch.setattr(extract.urllib.request, "urlopen", fake)
+    result = extract.annotate_image(png_file)
+
+    assert calls == [1]  # stale entry was a miss -> re-annotated over the network
+    assert result == "fresh annotation"  # the stale annotation was never served
+
+
 def test_unsupported_extension_raises_systemexit(env, tmp_path):
     path = tmp_path / "promo.jp2"
     path.write_bytes(b"not really jp2")
-    with pytest.raises(SystemExit, match="jp2"):
+    with pytest.raises(SystemExit, match=r"convert to png first \('jp2' unsupported by the vision API\)"):
         extract.annotate_image(path)
 
 
