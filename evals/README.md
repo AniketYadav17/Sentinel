@@ -81,8 +81,8 @@ at 768 embedding dims: **Gemini** (`gemini-embedding-001` dense / `gemini-3.5-fl
 judge — the Phase 3 incumbent, run as the v2 control before its vectors were
 overwritten) and **Azure** (`text-embedding-3-large` dense / `gpt-4.1-mini` judge — the
 production target). Corpus: CONC 3, 86 chunks, 0 claims skipped on either provider.
-Predictions for every number below were registered in the build log *before* any v2 run
-— see the scorecard.
+Predictions for every number below were pre-registered *before* any v2 run — see the
+scorecard.
 
 ### Retrieval
 
@@ -206,8 +206,8 @@ the first time in a demo run.
 
 ### Prediction scorecard
 
-Predictions were recorded in the build log before any v2 run. Scoring them here, no
-post-hoc smoothing:
+Predictions were pre-registered before any v2 run. Scoring them here, no post-hoc
+smoothing — including the one that's easy to quietly drop:
 
 | # | prediction | actual | verdict |
 |---|---|---|---|
@@ -217,11 +217,18 @@ post-hoc smoothing:
 | 4 | hybrid ≤ dense | Gemini: .809 = .809 (tie); Azure: .814 > .740 | **MIXED** |
 | 5 | judge accuracy: Azure ≈ 0.88, Gemini ≈ 0.84 | both 0.971 | **both UNDER** (by .091, .131) |
 | 6 | e2e ≈ 0.81 (21/26) | 0.308 (8/26) | **badly WRONG** (off by .502) |
+| 7 | citation_hit ≈ dense recall@5 (retrieval ceiling reasserts itself) | citation_hit .882 both providers; dense recall@5 .809 (Gemini) / .740 (Azure) — citation_hit didn't move with the metric it was predicted to track | **WRONG on mechanism** |
 
-Every prediction missed low, except #2, which missed on direction as well as
-magnitude. That's the point of registering predictions before running the eval — not to
-be right, but to make it impossible to quietly rewrite the story after seeing the
-numbers. This scorecard is the evidence the discipline is doing something.
+Row 7's reading: citation_hit only needs the cited rule *anywhere* in the top-5, which
+is what hit@5 measures (.882 both providers, matching citation_hit exactly) — not full
+recall@5 of every cited rule. The predicted "ceiling" metric was misidentified; hit@5,
+not recall@5, is what bounds it. Leaving this row out would have been exactly the
+post-hoc smoothing this scorecard exists to prevent.
+
+Every prediction missed low; #2 additionally missed on direction. That's the point of
+pre-registering predictions before running the eval — not to be right, but to make it
+impossible to quietly rewrite the story after seeing the numbers. This scorecard is the
+evidence the discipline is doing something.
 
 ### Statistical honesty
 
@@ -244,4 +251,6 @@ annotate-only; harm-category filters untouched) rather than rewording the prompt
 would have traded away the hardening just to dodge a false positive. Parallel e2e
 fan-out separately needed judge capacity raised to 50K TPM. The `ragas` arm remains
 Gemini-backed by design — a demoted, optional metric group, not re-baselined on Azure
-this round.
+this round, because the Phase 3 analysis found off-the-shelf faithfulness mis-measures
+this task shape (rationales must reference the claim under assessment, which is never
+present in the retrieved contexts).

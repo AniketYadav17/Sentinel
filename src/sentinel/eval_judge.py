@@ -2,7 +2,7 @@
 
 Usage: python -m sentinel.eval_judge --mode judge|e2e|ragas
 judge (primary): golden claims fed straight to the judge — deterministic per-claim comparison.
-Retrieval ceiling applies: dense recall@5 ~= .50 bounds citation_hit (that is 3b's job).
+citation_hit is bounded by retrieval quality — see the trade-off table (that is 3b's job).
 """
 
 import argparse
