@@ -369,27 +369,40 @@ decided below, against the holdout.
 
 ### Miss taxonomy behind the sweep
 
-Root-causing the K=5 baseline's 13 misses (of 26 golden examples) found three separate
-classes, only one of which the K sweep can fix:
+Root-causing the K=5 baseline's 13 misses (of 26 golden examples) found four classes.
+Counts: 10 (class A) + 1 (class C) + 2 (class D) = 13; class B is a retrieval-mechanism
+explanation nested inside class A's misses, not a separately-counted class. Only class
+B — and therefore only part of class A — is something the K sweep can act on:
 
-- **Judge `needs_review` inflation on context-poor fragments — 10 of 13 misses.** The
-  0.971-accurate judge (see "Judge accuracy" above) turns cautious when a claim is a
-  bare fragment ("£189 per month", an address, even "Representative 24.9% APR
+- **A. Judge `needs_review` inflation on context-poor fragments — 10 of 13 misses.**
+  The 0.971-accurate judge (see "Judge accuracy" above) turns cautious when a claim is
+  a bare fragment ("£189 per month", an address, even "Representative 24.9% APR
   (variable)") stripped of the omission framing that would make its significance
   legible. This is the dominant miss class, and it is a judge/decomposer-context
   problem, not a retrieval-depth problem — out of this phase's scope, recorded as the
   next lever after multimodal.
-- **Scan under-emission, retrieval-bound — confirmed.** For several of the same
-  misses, the scan emitted no omission claim at all in the apr-triggers / rep-example /
-  broker areas, consistent with whole-promotion K=5 retrieval missing the triggering
-  provision. This is exactly what the K sweep tests, and the sweep's own accuracy climb
-  (0.500 → 0.654 through K=12) confirms the hypothesis directly.
-- **Two prominence golds, structurally unreachable in a text-only pipeline.** Two
-  golden examples (`needs_review`, on font-size/contrast prominence questions) cannot
-  be scored correctly by any retrieval depth or judge tuning, because the prominence
-  fact they turn on was never in the text at all — it lives in the image. This is
-  exactly the gap the multimodal layer, and the FG15-04 holdout built on it, exists to
-  address.
+- **B. Scan under-emission, retrieval-bound — overlaps class A, not separately
+  counted.** For several of class A's misses (apr-triggers / rep-example / broker
+  areas), the scan emitted no omission claim at all, consistent with whole-promotion
+  K=5 retrieval missing the triggering provision. This is exactly what the K sweep
+  tests, and the sweep's own accuracy climb (0.500 → 0.654 through K=12) confirms the
+  hypothesis directly — the one mechanism the K sweep can act on.
+- **C. Scan false positive on an exclusion — 1 of 13 misses (gold-110).** The scan
+  flagged a missing HCSTC risk warning where the promotion is actually excluded from
+  that requirement under CONC 3.1.7R; the judge-rescue guard, whose job is to catch a
+  scan claim contradicted by what it retrieves, failed to catch this one. Honest
+  status: out of reach of both the K sweep (more retrieval depth doesn't teach the scan
+  to recognise an exclusion it already retrieved and ignored) and the multimodal layer
+  (nothing about this miss is image-related). At n=1, any fix targeted at this single
+  example would be overfitting the eval set, not a generalizable improvement — recorded
+  as an open exclusion-awareness item for the scan prompt, to revisit once a future
+  dataset expansion gives it more than one example to fix against.
+- **D. Two prominence golds, structurally unreachable in a text-only pipeline — 2 of 13
+  misses.** Two golden examples (`needs_review`, on font-size/contrast prominence
+  questions) cannot be scored correctly by any retrieval depth or judge tuning, because
+  the prominence fact they turn on was never in the text at all — it lives in the
+  image. This is exactly the gap the multimodal layer, and the FG15-04 holdout built on
+  it, exists to address.
 
 ### Adjudication protocol
 
@@ -435,7 +448,9 @@ Predictions were pre-registered before any holdout run, under the amended protoc
 both e2e arms in the 0.33–0.55 band (most holdout claims cite out-of-corpus rules, so
 retrieved CONC chunks are structured noise for them — this measures judge robustness to
 irrelevant context more than retrieval); K=12 ≥ K=5 by 0–1 examples; the retrieval
-comparison an uninformative tie.
+comparison an uninformative tie; and that the judge routes several out-of-domain claims
+to `needs_review`, with the grounding check also firing where a claim cites a rule that
+wasn't retrieved.
 
 | # | prediction | actual | verdict |
 |---|---|---|---|
@@ -443,14 +458,22 @@ comparison an uninformative tie.
 | 2 | K=12 e2e accuracy in-band (0.33–0.55) | 0.556 | **miss — marginal**, ~0.006 above the top of the band |
 | 3 | K=12 ≥ K=5 by 0–1 examples (direction + margin) | K=12 beats K=5 by exactly 1 example (5/9 vs 4/9) | **HIT** |
 | 4 | retrieval comparison an uninformative tie | recall@5 tied exactly (0.833 = 0.833); MRR gap is noise at n=3 | **HIT** |
+| 5 | judge routes several out-of-domain claims to `needs_review`; grounding check also fires on uncited-rule citations | not recorded — no per-claim holdout outputs on disk | **NOT SCORED** |
 
-Three of four land outright, and the fourth — K=12's accuracy — missed the band by
-about half a percentage point, on the high side, the same direction the eval-set sweep
-already pointed. This is the first prediction set on this project where the honest
-description is "substantially correct" rather than "wrong, scored honestly": every
-prior scorecard here (the v2 retrieval predictions above, the v2 e2e prediction, the
-omission-scan e2e prediction) missed by far wider margins, several by double-digit
-percentage points. Said plainly, because the prior scorecards said the opposite.
+Row 5 is neither a hit nor a miss — it's undecidable from what exists. The
+adjudication driver logged only aggregate `overall_accuracy` / `mean_claim_delta` per
+K, not per-claim judge verdicts or grounding-check outcomes, so there is no artifact to
+check this prediction against. It is kept here rather than quietly dropped: the
+prediction was made, and the evidence to score it does not exist.
+
+Three of the four scored rows land outright, and the fourth — K=12's accuracy — missed
+the band by about half a percentage point, on the high side, the same direction the
+eval-set sweep already pointed. This is the first prediction set on this project where
+the honest description of the scored rows is "substantially correct" rather than
+"wrong, scored honestly": every prior scorecard here (the v2 retrieval predictions
+above, the v2 e2e prediction, the omission-scan e2e prediction) missed by far wider
+margins, several by double-digit percentage points. Said plainly, because the prior
+scorecards said the opposite.
 
 ### Operational notes
 
