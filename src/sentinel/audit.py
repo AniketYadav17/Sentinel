@@ -1,4 +1,4 @@
-"""LangGraph audit workflow for financial promotions: decompose -> per-claim retrieve -> judge -> HITL gate.
+"""LangGraph audit workflow for financial promotions: decompose -> omission scan -> per-claim retrieve -> judge -> HITL gate.
 
 Usage: python -m sentinel.audit "promo text" [--channel promo_email] [--file f]
 JSON report on stdout, human summary on stderr. Pauses for human input when any
@@ -37,6 +37,23 @@ DECOMPOSE_SCHEMA = {
         }
     },
     "required": ["claims"],
+    "additionalProperties": False,
+}
+
+OMISSION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "omissions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"claim": {"type": "string"}},
+                "required": ["claim"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["omissions"],
     "additionalProperties": False,
 }
 
@@ -84,6 +101,20 @@ def decompose_prompt(text: str, channel: str) -> str:
     )
 
 
+def omission_prompt(text: str, channel: str, provisions: list[dict]) -> str:
+    rules = "\n\n".join(f"[{p['rule_id']}{p['designation']}] {p['text']}" for p in provisions)
+    return (
+        "You audit UK consumer-credit financial promotions against the FCA Handbook (CONC).\n"
+        f"Channel: {channel}.\n" + UNTRUSTED_INTRO + _fence("untrusted_communication", text) + "\n\n"
+        f"Handbook provisions retrieved for this promotion:\n{rules}\n\n"
+        "List every piece of information these provisions REQUIRE this promotion to include where"
+        " (a) something in the promotion text triggers the requirement — quote the trigger — and"
+        " (b) the required information is absent from the promotion text."
+        ' One short omission claim per item, e.g. "Omission: no representative APR despite the'
+        " incentive 'instant decision'\". If nothing required is missing, return an empty list."
+    )
+
+
 def judge_prompt(claim: str, channel: str, text: str, provisions: list[dict]) -> str:
     rules = "\n\n".join(f"[{p['rule_id']}{p['designation']}] {p['text']}" for p in provisions)
     return (
@@ -120,6 +151,11 @@ def build_graph(searcher):
             raise RuntimeError("decomposer returned zero claims — nothing to audit")
         return {"claims": raw["claims"]}
 
+    def omission_scan(state: AuditState) -> dict:
+        provisions = searcher(state["text"])
+        raw = generate_json(omission_prompt(state["text"], state["channel"], provisions), OMISSION_SCHEMA)
+        return {"claims": state["claims"] + raw["omissions"]}
+
     def fan_out(state: AuditState):
         return [
             Send("judge_claim", {"claim": c["claim"], "text": state["text"], "channel": state["channel"], "index": i})
@@ -155,11 +191,13 @@ def build_graph(searcher):
 
     g = StateGraph(AuditState)
     g.add_node("decompose", decompose)
+    g.add_node("omission_scan", omission_scan)
     g.add_node("judge_claim", judge_claim)
     g.add_node("aggregate", aggregate)
     g.add_node("gate", gate)
     g.add_edge(START, "decompose")
-    g.add_conditional_edges("decompose", fan_out, ["judge_claim"])
+    g.add_edge("decompose", "omission_scan")
+    g.add_conditional_edges("omission_scan", fan_out, ["judge_claim"])
     g.add_edge("judge_claim", "aggregate")
     g.add_edge("aggregate", "gate")
     g.add_edge("gate", END)
