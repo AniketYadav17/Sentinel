@@ -2802,6 +2802,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "pillow" },
     { name = "pypdf" },
     { name = "pytest" },
 ]
@@ -2825,6 +2826,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "pillow", specifier = ">=12.3.0" },
     { name = "pypdf", specifier = ">=6.15.0" },
     { name = "pytest", specifier = ">=9.1.1" },
 ]
