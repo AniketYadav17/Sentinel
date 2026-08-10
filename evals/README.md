@@ -208,8 +208,9 @@ plainly rather than let a rising delta read as worse decomposition.
 
 **Prediction scored honestly.** Pre-registered before the run: overall accuracy ≈ 0.65
 (17/26), claim delta ≈ 3.8. Actual: 0.500 (13/26), delta 3.69. Accuracy missed HIGH
-again — the third optimistic e2e-family miss on this project's prediction scorecard;
-the tradition continues. Delta landed close to predicted (3.69 vs 3.8).
+again — the second pre-registered e2e-accuracy miss on this project's prediction
+scorecard, after the v2 re-baseline's 0.81 → 0.308. Delta landed close to predicted
+(3.69 vs 3.8).
 
 **Judge-mode invariance confirmed**: re-running `--mode judge` gives accuracy 0.971 /
 citation_hit 0.882, unchanged from the table above — cache-served, confirming the scan
