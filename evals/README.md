@@ -202,9 +202,7 @@ authority.
 
 **Result: overall_accuracy 0.308 → 0.500, mean_claim_delta 3.00 → 3.69** — 5 more
 examples scored correctly (+62% relative). The delta rose too, and that's expected, not
-a regression: omission claims add to the claim count on both sides of the delta
-computation, so a bigger, more accurate claim set produces a bigger delta — say so
-plainly rather than let a rising delta read as worse decomposition.
+a regression: gold examples average 1.3 claims (34/26) while the decomposer already emits several stated claims per promotion — a baseline delta of 3.00 with zero omission claims is only possible if the pipeline over-counts gold on nearly every example — so each appended omission claim, correct or not, moves the count further from gold's.
 
 **Prediction scored honestly.** Pre-registered before the run: overall accuracy ≈ 0.65
 (17/26), claim delta ≈ 3.8. Actual: 0.500 (13/26), delta 3.69. Accuracy missed HIGH
@@ -227,10 +225,10 @@ offline. The audit graph's default searcher has no embedding cache, so replaying
 specific example's retrieval to tell apart a retrieval miss from a prompt miss from a
 judge miss needs live API calls — that replay was attempted twice this phase and
 blocked twice by transient network failures. Building that cache is the first item of
-the tuning phase, alongside widening `OMISSION_TOP_K` and prompt variants — both are
+the tuning phase, alongside widening the scan's retrieval top-K and prompt variants — both are
 explicitly future experiments; no tuning happened in this phase, by user decision.
 
-**Demo smoke** (`uv run python -m sentinel.audit "Get a loan in 5 minutes! No credit
+(Pre-scan run.) **Demo smoke** (`uv run python -m sentinel.audit "Get a loan in 5 minutes! No credit
 check impact!"`, Azure end-to-end): PASS. The HITL gate interrupted on real input,
 routing the claim to human review over `CONC 3.6.7G` rather than forcing a confident
 breach/compliant call — the gate firing on genuine ambiguity, not a canned example, for

@@ -200,3 +200,17 @@ def test_omission_prompt_fences_and_neutralizes(monkeypatch):
     assert prompt.count("</untrusted_communication>") == 1
     assert "[stripped-delimiter]" in prompt
     assert "CONC 3.3.1" in prompt
+
+
+def test_omission_scan_queries_whole_promotion(monkeypatch):
+    seen = []
+
+    def searcher(q):
+        seen.append(q)
+        return [PROVISION]
+
+    monkeypatch.setattr(audit, "generate_json", fake_generate([{"claims": [{"claim": "c1"}]}, OM_NONE, J_OK]))
+    g = audit.build_graph(searcher)
+    run(g)
+    assert "No credit check impact!" in seen  # the scan queried the full promotion text
+    assert "c1" in seen  # the judge queried the claim
