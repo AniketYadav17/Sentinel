@@ -1,7 +1,7 @@
 """fca-handbook MCP server: read-only handbook retrieval for any MCP client (optional group: mcp).
 
 Usage: python -m sentinel.mcp_server   (stdio transport)
-Dense mode needs GEMINI_API_KEY for query embedding; bm25 mode is fully offline.
+Dense mode needs AZURE_OPENAI_API_KEY for query embedding; bm25 mode is fully offline.
 """
 
 from pathlib import Path
@@ -15,7 +15,7 @@ def make_server(index) -> FastMCP:
 
     @server.tool()
     def search_handbook(query: str, mode: Literal["dense", "bm25"] = "dense", k: int = 5) -> list[dict]:
-        """Search FCA Handbook provisions. mode: dense (semantic, needs GEMINI_API_KEY) or bm25 (offline)."""
+        """Search FCA Handbook provisions. mode: dense (semantic, needs AZURE_OPENAI_API_KEY) or bm25 (offline)."""
         if mode == "dense":
             from sentinel.embed import embed_texts
 

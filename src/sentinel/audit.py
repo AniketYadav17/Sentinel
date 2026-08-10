@@ -24,25 +24,32 @@ TOP_K = 5
 _RANK = {"breach": 0, "needs_review": 1, "compliant": 2}
 
 DECOMPOSE_SCHEMA = {
-    "type": "OBJECT",
+    "type": "object",
     "properties": {
         "claims": {
-            "type": "ARRAY",
-            "items": {"type": "OBJECT", "properties": {"claim": {"type": "STRING"}}, "required": ["claim"]},
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"claim": {"type": "string"}},
+                "required": ["claim"],
+                "additionalProperties": False,
+            },
         }
     },
     "required": ["claims"],
+    "additionalProperties": False,
 }
 
 JUDGE_SCHEMA = {
-    "type": "OBJECT",
+    "type": "object",
     "properties": {
-        "verdict": {"type": "STRING", "enum": ["breach", "compliant", "needs_review"]},
-        "rule_ids": {"type": "ARRAY", "items": {"type": "STRING"}},
-        "rationale": {"type": "STRING"},
-        "confidence": {"type": "STRING", "enum": ["high", "medium", "low"]},
+        "verdict": {"type": "string", "enum": ["breach", "compliant", "needs_review"]},
+        "rule_ids": {"type": "array", "items": {"type": "string"}},
+        "rationale": {"type": "string"},
+        "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
     },
     "required": ["verdict", "rule_ids", "rationale", "confidence"],
+    "additionalProperties": False,
 }
 
 

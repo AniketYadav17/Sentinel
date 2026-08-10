@@ -20,7 +20,7 @@ Phases 1–3 built the pipeline; the ground truth was then rebuilt before produc
 - **Phase 3** — LangGraph audit agent (claim decomposition → per-claim retrieval → structured judgement → human-in-the-loop interrupt gate), judge-accuracy evals, four more measured retrieval arms (the best one beat dense on both gated metrics and was deliberately *not* adopted — it was tuned on the eval set), and an `fca-handbook` MCP server.
 - **Ground truth v2 (2026-08)** — an audit of the original golden set found its labels were LLM-generated end to end and never human-adjudicated, so its headline metrics measured cross-model agreement, not accuracy. The set and every number resting on it were deleted in the same commit and replaced with an FCA-sourced dataset: every label now carries a `label_authority` block quoting the FCA publication that names the pattern and the rule ([`evals/README.md`](evals/README.md)). Scope narrowed to financial promotions. Metrics re-baseline lands with the Azure provider swap.
 
-Try it (needs `GEMINI_API_KEY`):
+Try it (needs `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_EMBED_DEPLOYMENT` (default `sentinel-embed`), `AZURE_OPENAI_CHAT_DEPLOYMENT` (default `sentinel-judge`)):
 
 ```
 uv sync
