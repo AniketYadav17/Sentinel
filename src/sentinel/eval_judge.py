@@ -66,7 +66,7 @@ def print_metrics(m: dict) -> None:
     print("  confusion (gold -> pred):", {f"{g}->{p}": c for (g, p), c in sorted(m["confusion"].items())})
     for a, acc in m["by_area"].items():
         print(f"  {a:<22} accuracy {acc:.3f}")
-    print("note: citation_hit is bounded by retrieval recall@5 (~.50 dense) — see trade-off table")
+    print("note: citation_hit is bounded by retrieval recall — see the retrieval trade-off table (evals/README.md)")
 
 
 def run_judge_mode(root: Path) -> None:
