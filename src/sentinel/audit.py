@@ -256,13 +256,21 @@ def resolve_pending(pending: list[dict], ask=_ask) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("text", nargs="?", help="communication text (or use --file)")
+    parser.add_argument("text", nargs="?", help="communication text (or use --file/--media)")
     parser.add_argument("--channel", default="promo_email", choices=("promo_email", "promo_social", "promo_web"))
     parser.add_argument("--file", help="read communication text from a file")
+    parser.add_argument("--media", help="read communication text from an image file (layout-annotated transcription)")
     args = parser.parse_args()
-    if not args.text and not args.file:
-        parser.error("provide text or --file")
-    text = open(args.file, encoding="utf-8").read() if args.file else args.text
+    if not args.text and not args.file and not args.media:
+        parser.error("provide text, --file or --media")
+    if args.media:
+        from sentinel.extract import annotate_image  # lazy: keeps module import light
+
+        text = annotate_image(Path(args.media))
+    elif args.file:
+        text = open(args.file, encoding="utf-8").read()
+    else:
+        text = args.text
 
     graph = build_graph(default_searcher())
     config = {"configurable": {"thread_id": "cli"}}

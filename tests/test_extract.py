@@ -1,0 +1,113 @@
+import base64
+import json
+from io import BytesIO
+
+import pytest
+
+import sentinel.extract as extract
+
+PNG_BYTES = b"\x89PNG\r\n\x1a\nfake-png-bytes-for-test"
+
+
+def _resp(payload: dict):
+    class R(BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    return R(json.dumps(payload).encode())
+
+
+def _azure_ok(text: str) -> dict:
+    return {"choices": [{"finish_reason": "stop", "message": {"content": text, "refusal": None}}]}
+
+
+@pytest.fixture
+def env(tmp_path, monkeypatch):
+    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com/")
+    monkeypatch.setenv("AZURE_OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("AZURE_OPENAI_CHAT_DEPLOYMENT", "sentinel-judge")
+    monkeypatch.setattr(extract, "CACHE_DIR", tmp_path / "extract")
+
+
+@pytest.fixture
+def png_file(tmp_path):
+    path = tmp_path / "promo.png"
+    path.write_bytes(PNG_BYTES)
+    return path
+
+
+def test_wire_shape(env, png_file, monkeypatch):
+    captured = {}
+
+    def fake(req, timeout):
+        captured["body"] = json.loads(req.data)
+        captured["req"] = req
+        return _resp(_azure_ok("[headline · large · bold] DRIVE AWAY TODAY"))
+
+    monkeypatch.setattr(extract.urllib.request, "urlopen", fake)
+    result = extract.annotate_image(png_file)
+    assert result == "[headline · large · bold] DRIVE AWAY TODAY"
+
+    body = captured["body"]
+    assert body["model"] == "sentinel-judge"
+    assert body["temperature"] == 0
+    assert "response_format" not in body
+
+    content = body["messages"][0]["content"]
+    assert content[0] == {"type": "text", "text": extract.ANNOTATE_PROMPT}
+    assert content[1]["type"] == "image_url"
+    url = content[1]["image_url"]["url"]
+    assert url.startswith("data:image/png;base64,")
+    b64 = url.split(",", 1)[1]
+    assert base64.b64decode(b64) == PNG_BYTES
+
+    assert captured["req"].get_header("Api-key") == "test-key"
+
+
+def test_cache_hit_skips_network(env, png_file, monkeypatch):
+    monkeypatch.setattr(
+        extract.urllib.request, "urlopen", lambda req, timeout: _resp(_azure_ok("annotated text"))
+    )
+    first = extract.annotate_image(png_file)
+
+    def boom(req, timeout):
+        raise AssertionError("network hit on cached call")
+
+    monkeypatch.setattr(extract.urllib.request, "urlopen", boom)
+    second = extract.annotate_image(png_file)
+    assert first == second == "annotated text"
+
+
+def test_unsupported_extension_raises_systemexit(env, tmp_path):
+    path = tmp_path / "promo.jp2"
+    path.write_bytes(b"not really jp2")
+    with pytest.raises(SystemExit, match="jp2"):
+        extract.annotate_image(path)
+
+
+def test_refusal_raises_runtime_error(env, png_file, monkeypatch):
+    payload = {
+        "choices": [
+            {"finish_reason": "content_filter", "message": {"content": None, "refusal": "cannot help with that"}}
+        ]
+    }
+    monkeypatch.setattr(extract.urllib.request, "urlopen", lambda req, timeout: _resp(payload))
+    with pytest.raises(RuntimeError, match="cannot help with that"):
+        extract.annotate_image(png_file)
+
+
+def test_empty_choices_raises_loudly(env, png_file, monkeypatch):
+    monkeypatch.setattr(extract.urllib.request, "urlopen", lambda req, timeout: _resp({"choices": []}))
+    with pytest.raises(RuntimeError, match="no choices"):
+        extract.annotate_image(png_file)
+
+
+def test_finish_reason_not_stop_raises(env, png_file, monkeypatch):
+    payload = _azure_ok("partial text")
+    payload["choices"][0]["finish_reason"] = "length"
+    monkeypatch.setattr(extract.urllib.request, "urlopen", lambda req, timeout: _resp(payload))
+    with pytest.raises(RuntimeError, match="length"):
+        extract.annotate_image(png_file)

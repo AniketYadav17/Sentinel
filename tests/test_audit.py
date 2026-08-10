@@ -1,4 +1,5 @@
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -138,6 +139,25 @@ def test_main_rejects_out_of_scope_channel(monkeypatch, capsys):
     with pytest.raises(SystemExit):
         audit.main()
     assert "invalid choice" in capsys.readouterr().err
+
+
+def test_main_reads_media_via_annotate_image(monkeypatch, capsys):
+    seen_paths = []
+
+    def fake_annotate(path):
+        seen_paths.append(path)
+        return "[headline · large · bold] SAVE NOW"
+
+    monkeypatch.setattr("sentinel.extract.annotate_image", fake_annotate)
+    monkeypatch.setattr(sys, "argv", ["audit", "--media", "promo.png"])
+    monkeypatch.setattr(audit, "default_searcher", lambda: (lambda claim, k=None: [PROVISION]))
+    gen = fake_generate([{"claims": [{"claim": "c1"}]}, OM_NONE, J_OK])
+    monkeypatch.setattr(audit, "generate_json", gen)
+
+    audit.main()
+
+    assert seen_paths == [Path("promo.png")]
+    assert any("SAVE NOW" in p for p in gen.calls)
 
 
 J_UNGROUNDED = {"verdict": "breach", "rule_ids": ["CONC 9.9.9R"], "rationale": "r", "confidence": "high"}
