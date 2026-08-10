@@ -225,7 +225,7 @@ recall@5 of every cited rule. The predicted "ceiling" metric was misidentified; 
 not recall@5, is what bounds it. Leaving this row out would have been exactly the
 post-hoc smoothing this scorecard exists to prevent.
 
-Every prediction missed low; #2 additionally missed on direction. That's the point of
+Not one prediction landed: rows 1–3 and 5 missed low, row 4 split, row 6 missed high by .502, and row 7 misidentified the bounding metric; #2 additionally missed on direction. That's the point of
 pre-registering predictions before running the eval — not to be right, but to make it
 impossible to quietly rewrite the story after seeing the numbers. This scorecard is the
 evidence the discipline is doing something.
