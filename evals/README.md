@@ -174,29 +174,60 @@ judge families and FCA-anchored ground truth.
 
 ### End-to-end
 
-`python -m sentinel.eval_judge --mode e2e`, full graph (decompose → retrieve → judge →
-HITL gate) against all 26 golden examples, Azure only (see honesty check below).
+`python -m sentinel.eval_judge --mode e2e`, full graph (decompose → omission scan →
+per-claim retrieve → judge → HITL gate) against all 26 golden examples, Azure only (see
+honesty check below).
 
-| metric | value |
-|---|---|
-| overall_accuracy | 0.308 (8/26) |
-| mean_claim_delta | 3.00 |
+| metric | before (omission-blind decomposer) | after (+ omission scan) |
+|---|---|---|
+| overall_accuracy | 0.308 (8/26) | 0.500 (13/26) |
+| mean_claim_delta | 3.00 | 3.69 |
 
-Per-component judge accuracy is .971; end-to-end is .308. That 0.663 gap is the
-measured size of an architecture mismatch, root-caused offline via a decompose-cache
-readback: **0 of 26 decompositions contain any omission-style claim, while 13 of the 17
-gold `breach` examples are omission breaches** — the decomposer's prompt asks what the
-ad *says*; the golden labels ask what it *fails to say*. No amount of judge or
-retrieval tuning fixes a claim the decomposer never extracts in the first place.
-Next-phase lever: an omission-aware decompose step — operationalizing the FCA's own
-promotion checklist (the same document several `label_authority` blocks above already
-cite) rather than inventing a new detection heuristic.
+Per-component judge accuracy is .971; the pre-scan end-to-end number was .308. That
+0.663 gap was root-caused offline via a decompose-cache readback: **0 of 26
+decompositions contained any omission-style claim, while 13 of the 17 gold `breach`
+examples are omission breaches** — the decomposer's prompt asks what the ad *says*; the
+golden labels ask what it *fails to say*. No amount of judge or retrieval tuning fixes a
+claim the decomposer never extracts in the first place.
+
+**The fix**: one new graph node, `omission_scan`, wired between `decompose` and the
+per-claim fan-out — whole-promotion retrieval (the existing searcher, queried with the
+full promotion text instead of a single claim) surfaces the provisions in play, the LLM
+is asked which of those provisions' requirements are triggered by something in the text
+but not satisfied by it, and the resulting omission claims are appended to the claim
+list before the normal per-claim retrieve → judge → grounding-check → HITL-gate path
+runs on every claim, stated or omitted. The scan itself emits no verdicts and cites no
+rules — it is a claim generator, not a judge; the judge stays the single verdict
+authority.
+
+**Result: overall_accuracy 0.308 → 0.500, mean_claim_delta 3.00 → 3.69** — 5 more
+examples scored correctly (+62% relative). The delta rose too, and that's expected, not
+a regression: omission claims add to the claim count on both sides of the delta
+computation, so a bigger, more accurate claim set produces a bigger delta — say so
+plainly rather than let a rising delta read as worse decomposition.
+
+**Prediction scored honestly.** Pre-registered before the run: overall accuracy ≈ 0.65
+(17/26), claim delta ≈ 3.8. Actual: 0.500 (13/26), delta 3.69. Accuracy missed HIGH
+again — the third optimistic e2e-family miss on this project's prediction scorecard;
+the tradition continues. Delta landed close to predicted (3.69 vs 3.8).
+
+**Judge-mode invariance confirmed**: re-running `--mode judge` gives accuracy 0.971 /
+citation_hit 0.882, unchanged from the table above — cache-served, confirming the scan
+does not touch that path.
 
 Honesty check on scope: this number is Azure-only. The Gemini e2e control was not run
 (judge quota). The root cause is argued from the decompose prompt and cache contents,
 not from a paired Gemini e2e run — it reads as prompt-structural (the decomposer's
 instructions, not the embedding or judge provider) rather than provider-specific, but
 that inference is one un-run experiment short of proof.
+
+**Honest gap.** Per-example attribution of the remaining 13 misses is not yet possible
+offline. The audit graph's default searcher has no embedding cache, so replaying a
+specific example's retrieval to tell apart a retrieval miss from a prompt miss from a
+judge miss needs live API calls — that replay was attempted twice this phase and
+blocked twice by transient network failures. Building that cache is the first item of
+the tuning phase, alongside widening `OMISSION_TOP_K` and prompt variants — both are
+explicitly future experiments; no tuning happened in this phase, by user decision.
 
 **Demo smoke** (`uv run python -m sentinel.audit "Get a loan in 5 minutes! No credit
 check impact!"`, Azure end-to-end): PASS. The HITL gate interrupted on real input,
