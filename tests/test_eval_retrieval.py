@@ -74,9 +74,8 @@ def test_retrieve_dispatches_by_mode():
 def test_query_vectors_caches_and_reuses(tmp_path, monkeypatch):
     calls = []
 
-    def fake_embed(texts, task_type):
+    def fake_embed(texts):
         calls.append(list(texts))
-        assert task_type == "RETRIEVAL_QUERY"
         return [[1.0, 0.0]] * len(texts)
 
     monkeypatch.setattr("sentinel.eval_retrieval.embed_texts", fake_embed)
@@ -95,7 +94,7 @@ def test_query_vector_cache_key_is_model_and_dim_scoped(tmp_path, monkeypatch):
     """A vector cached under the pre-fix text-only key must NOT be served after the fix."""
     calls = []
 
-    def fake_embed(texts, task_type):
+    def fake_embed(texts):
         calls.append(list(texts))
         return [[1.0, 0.0]] * len(texts)
 

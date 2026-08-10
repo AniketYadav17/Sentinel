@@ -39,7 +39,7 @@ def main() -> None:
         with (root / "data" / "blurbs" / cf.name).open("w", encoding="utf-8") as f:
             for c, b in blurbed:
                 f.write(json.dumps({"rule_id": c["rule_id"], "blurb": b}) + "\n")
-        vectors = embed_texts([contextual_text(c, b) for c, b in blurbed], "RETRIEVAL_DOCUMENT")
+        vectors = embed_texts([contextual_text(c, b) for c, b in blurbed])
         with (root / "data" / "embeddings_ctx" / cf.name).open("w", encoding="utf-8") as f:
             for (c, _), v in zip(blurbed, vectors):
                 f.write(json.dumps({"rule_id": c["rule_id"], "vector": v}) + "\n")

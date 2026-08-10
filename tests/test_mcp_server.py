@@ -46,9 +46,10 @@ def test_search_handbook_unknown_mode_raises():
 
 
 def test_search_handbook_dense_without_key_raises_runtimeerror_not_systemexit(monkeypatch):
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_ENDPOINT", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_API_KEY", raising=False)
     server = make_server(FakeIndex())
-    with pytest.raises(Exception, match="GEMINI_API_KEY"):
+    with pytest.raises(Exception, match="AZURE_OPENAI"):
         asyncio.run(server.call_tool("search_handbook", {"query": "q"}))
     # the assertion that matters: this must NOT raise SystemExit — pytest.raises(Exception) would not catch SystemExit, so passing proves the guard
 
@@ -56,7 +57,7 @@ def test_search_handbook_dense_without_key_raises_runtimeerror_not_systemexit(mo
 def test_search_handbook_dense_dispatch(monkeypatch):
     import sentinel.embed
 
-    monkeypatch.setattr(sentinel.embed, "embed_texts", lambda texts, task_type: [[1.0, 0.0]])
+    monkeypatch.setattr(sentinel.embed, "embed_texts", lambda texts: [[1.0, 0.0]])
     server = make_server(FakeIndex())
     result = asyncio.run(server.call_tool("search_handbook", {"query": "q", "mode": "dense", "k": 1}))
     _, structured = result

@@ -171,7 +171,7 @@ def default_searcher():
     from sentinel.index import Index
 
     index = Index.load(Path(__file__).parents[2] / "data")
-    return lambda claim: index.search_dense(embed_texts([claim], "RETRIEVAL_QUERY")[0], TOP_K)
+    return lambda claim: index.search_dense(embed_texts([claim])[0], TOP_K)
 
 
 def format_summary(report: dict) -> str:

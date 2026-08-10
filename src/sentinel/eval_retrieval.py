@@ -80,7 +80,7 @@ def query_vectors(queries: list[str], cache_path: Path) -> list[list[float]]:
                 cache[rec["sha"]] = rec["vector"]
     missing = [q for q in dict.fromkeys(queries) if sha(q) not in cache]
     if missing:
-        vectors = embed_texts(missing, "RETRIEVAL_QUERY")
+        vectors = embed_texts(missing)
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         with cache_path.open("a", encoding="utf-8") as f:
             for q, v in zip(missing, vectors):

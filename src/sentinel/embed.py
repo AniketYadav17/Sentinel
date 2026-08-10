@@ -1,7 +1,8 @@
-"""Gemini embeddings via the batch REST endpoint — stdlib urllib, zero deps.
+"""Azure OpenAI embeddings via the REST endpoint — stdlib urllib, zero deps.
 
 Usage: python -m sentinel.embed   ->  data/embeddings/<chapter>.jsonl
-Requires GEMINI_API_KEY in the environment (free key: aistudio.google.com).
+Requires AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY in the environment
+(AZURE_OPENAI_EMBED_DEPLOYMENT optional, default "sentinel-embed").
 """
 
 import json
@@ -13,39 +14,27 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-MODEL = "gemini-embedding-001"
-URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:batchEmbedContents"
+MODEL = "text-embedding-3-large"  # cache-key identity — the real model, not the deployment alias
 DIM = 768  # smaller than the 3072 default; we normalize ourselves below
-BATCH = 100  # API max per batchEmbedContents call
-SLEEP_SECONDS = 1.0  # politeness between batches, same policy as ingest.py
+BATCH = 100  # texts per request
 
 
-def embed_texts(texts: list[str], task_type: str) -> list[list[float]]:
-    """L2-normalized DIM-dim vectors, one per text.
-
-    task_type: "RETRIEVAL_DOCUMENT" for corpus chunks, "RETRIEVAL_QUERY" for queries.
-    """
-    key = os.environ.get("GEMINI_API_KEY") or sys.exit(
-        "GEMINI_API_KEY not set — create one at aistudio.google.com and set the env var"
+def embed_texts(texts: list[str]) -> list[list[float]]:
+    """L2-normalized DIM-dim vectors, one per text."""
+    endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT") or sys.exit(
+        "AZURE_OPENAI_ENDPOINT not set — set it to your Azure OpenAI resource endpoint"
     )
+    key = os.environ.get("AZURE_OPENAI_API_KEY") or sys.exit(
+        "AZURE_OPENAI_API_KEY not set — set it to your Azure OpenAI resource key"
+    )
+    deployment = os.environ.get("AZURE_OPENAI_EMBED_DEPLOYMENT", "sentinel-embed")
+    url = f"{endpoint.rstrip('/')}/openai/v1/embeddings"
     out: list[list[float]] = []
     for start in range(0, len(texts), BATCH):
         batch = texts[start : start + BATCH]
-        body = json.dumps(
-            {
-                "requests": [
-                    {
-                        "model": f"models/{MODEL}",
-                        "content": {"parts": [{"text": t}]},
-                        "taskType": task_type,
-                        "outputDimensionality": DIM,
-                    }
-                    for t in batch
-                ]
-            }
-        ).encode()
+        body = json.dumps({"model": deployment, "input": batch, "dimensions": DIM}).encode()
         req = urllib.request.Request(
-            URL, data=body, headers={"Content-Type": "application/json", "x-goog-api-key": key}
+            url, data=body, headers={"Content-Type": "application/json", "api-key": key}
         )
         for attempt in (1, 2):
             try:
@@ -54,20 +43,18 @@ def embed_texts(texts: list[str], task_type: str) -> list[list[float]]:
                 break
             except urllib.error.HTTPError as e:
                 if e.code == 429 and attempt == 1:
-                    time.sleep(60)  # ponytail: free tier allows 100 embed requests/min; one blunt wait outlives any window
+                    time.sleep(int(e.headers.get("Retry-After") or 60))
                     continue
-                raise RuntimeError(f"Gemini API HTTP {e.code}: {e.read().decode(errors='replace')}") from None
-        embeddings = payload.get("embeddings") or []
+                raise RuntimeError(f"Azure OpenAI HTTP {e.code}: {e.read().decode(errors='replace')}") from None
+        embeddings = payload.get("data") or []
         if len(embeddings) != len(batch):
-            raise RuntimeError(f"Gemini returned {len(embeddings)} embeddings for {len(batch)} texts")
+            raise RuntimeError(f"Azure OpenAI returned {len(embeddings)} embeddings for {len(batch)} texts")
         for e in embeddings:
-            v = e["values"]
+            v = e["embedding"]
             norm = math.sqrt(sum(x * x for x in v))
             if not norm:
-                raise RuntimeError("zero-norm embedding from Gemini")
+                raise RuntimeError("zero-norm embedding from Azure OpenAI")
             out.append([x / norm for x in v])
-        if start + BATCH < len(texts):
-            time.sleep(SLEEP_SECONDS)
     return out
 
 
@@ -80,7 +67,7 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     for cf in chunk_files:
         chunks = [json.loads(line) for line in cf.read_text(encoding="utf-8").splitlines() if line]
-        vectors = embed_texts([c["text"] for c in chunks], "RETRIEVAL_DOCUMENT")
+        vectors = embed_texts([c["text"] for c in chunks])
         out = out_dir / cf.name
         with out.open("w", encoding="utf-8") as f:
             for c, v in zip(chunks, vectors):
