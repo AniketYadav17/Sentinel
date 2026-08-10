@@ -13,7 +13,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-MODEL = "gpt-4.1-mini"  # cache-key identity — the real model, not the deployment alias
+MODEL = "gpt-4.1-mini"  # cache-key identity — the real model, not the deployment alias; bump together with extract.py's MODEL — both key caches on it
 CACHE_DIR = Path(__file__).parents[2] / "data" / "cache" / "llm"
 
 

@@ -21,7 +21,7 @@ from sentinel.eval_retrieval import normalize_rule_id, query_vectors
 from sentinel.llm import generate_json
 
 TOP_K = 5
-OMISSION_TOP_K = 12  # adopted 2026-08-09: eval-set sweep peak (e2e .654) + independent pre-registered holdout direction (K=12 .556 > K=5 .444, n=9, one-example margin) — see evals/README
+OMISSION_TOP_K = 12  # adopted 2026-08-10: eval-set sweep peak (e2e .654) + independent pre-registered holdout direction (K=12 .556 > K=5 .444, n=9, one-example margin) — see evals/README
 QUERY_CACHE = Path(__file__).parents[2] / "data" / "embeddings" / "queries.jsonl"
 _RANK = {"breach": 0, "needs_review": 1, "compliant": 2}
 
