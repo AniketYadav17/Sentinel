@@ -70,9 +70,69 @@ Known coverage limits (recorded, not hidden): no example yet exercises CONC 3.5.
 representative-APR labelling defects, the broker-and-lender limb of CONC 3.7.7R(2),
 the transcript's second-"representative"-example pattern, a promotion omitting the
 firm's name, the image-promotion side of the CONC 3.1.7R exclusion, or the
-CONC 3.5.12R restricted expressions. Expansion is planned for the eval re-baseline,
-alongside an FCA-authored holdout extracted from FG15-04's image examples once
-multimodal extraction lands.
+CONC 3.5.12R restricted expressions. Expansion is planned for a future re-baseline.
+The FCA-authored holdout extracted from FG15-04's image examples has landed — see
+the next section.
+
+## The FG15-04 holdout
+
+Every number in this document so far is scored against the golden set that also
+motivated the changes being measured — an eval set, not a holdout. The multimodal
+phase built an independent check: nine promotion images from the FCA's own 2015
+social-media guidance, [FG15/4](https://www.fca.org.uk/publication/finalised-guidance/fg15-04.pdf),
+turned into ground truth through the same seam the multimodal slice ships
+(`extract.py`'s vision call, wired into the audit CLI via `--media`): a
+layout-annotated verbatim transcription — `[position · relative size · emphasis or
+contrast]` prefixed on every line — so that prominence facts (font size, contrast,
+position) enter the audit graph *in-band*, as text, instead of being invisible to a
+text-only pipeline the way the two `prominence-review` golden misses are (see
+"Tuning" below).
+
+**Composition: 9 examples / 13 claims / 3 corpus-mappable.** The low corpus-mappable
+count has an honest structural reason, not an authoring one: FG15/4's example images
+are overwhelmingly investment and spread-betting promotions (five investment
+examples, three spread-betting examples), and exactly one — the Figure 6 "logbook
+lender" tweet — is a consumer-credit promotion inside CONC 3's scope. All 3
+corpus-mappable claims come from that single image; the other 10 claims cite
+COBS/PRIN/FSMA provisions the CONC 3 corpus was never built to answer, and are marked
+`rules_in_corpus: false` by construction — kept as judge context, excluded from
+retrieval scoring. Overall verdicts: 2 breach / 5 compliant / 2 needs_review.
+
+**One figure was deliberately excluded.** FG15/4's Figure 9 — a grid of tweets each
+carrying the FCA's own per-tweet verdict label ("Non-compliant – promotional",
+"Compliant – promotional", …) baked into the image content itself — was left out of
+the dataset entirely: transcribing it verbatim as `input_text` would hand the system
+under evaluation the answer key.
+
+**Two rulings needed a human, and both are disclosed in the dataset's own notes.**
+FG15/4 presents its Figure 6 example without any verdict label (its caption is just
+"Consumer Credit inserted images example") — the two compliant calls on that image
+are *inferred* from the annotated content mechanically satisfying current CONC
+3.5.7R/3.5.8G(4)/3.5.3R(2), not FCA-stated, and that inference was owner-ratified
+before any holdout number existed. Separately, the same image shows a rate (RAPR
+209.8%) but no visible postal address; whether CONC 3.5.3R(1)(b)'s postal-address
+requirement is satisfied can't be determined from an inserted-image fragment alone,
+so that claim is carried as `needs_review` — an owner ruling, also made and
+disclosed before any holdout number existed.
+
+**Drift, checked per rule against the current corpus text.** CONC 3.4.1R(2) — the
+provision FG15/4's annex discusses in the context of a since-closed consultation — now
+reads "[deleted]" in the live Handbook; no holdout claim rests on it (Figure 6's
+logbook credit is excluded from the HCSTC definition it used to qualify). CONC 3.5.7R
+and CONC 3.5.3R, the two rules the holdout does claim on, both gained limbs since
+2015: CONC 3.5.7R added a payment-account cash-sum carve-out and further exclusions
+(overdrafts, 0%-APR agreements, community finance organisations), and CONC 3.5.3R
+added a 0%-APR-only exemption. None of the additions touches the Figure 6 promotion —
+but the check is what makes that "none" a checked fact rather than an assumption.
+
+**Power limits, stated plainly.** The retrieval half of any holdout comparison rests
+on 3 claims that all come from one promotion — effectively n=1 at the level that
+matters (a distinct promotion, not a distinct claim), nowhere near enough to
+adjudicate a retrieval-fusion decision. The e2e half covers all 9 examples, but at
+that size one example is worth about 11 percentage points of accuracy: a result that
+moves by one example is a result at the edge of what nine examples can say anything
+about. Both limits are why the adjudication rules for this holdout were pre-registered
+*before* any holdout number existed — see the next section.
 
 ## Metrics (v2 re-baseline, 2026-08-10)
 
@@ -234,6 +294,14 @@ routing the claim to human review over `CONC 3.6.7G` rather than forcing a confi
 breach/compliant call — the gate firing on genuine ambiguity, not a canned example, for
 the first time in a demo run.
 
+**Config note (2026-08-10).** The table above was measured at `OMISSION_TOP_K = 5`, the
+value in place through the tuning phase. **The current default is K=12**,
+holdout-confirmed: two-dataset evidence (an eval-set sweep peak plus an independent,
+pre-registered FG15-04 holdout direction) adjudicated the change — full sweep table and
+adjudication in "Tuning: the scan depth sweep and its holdout verdict" below. The
+0.500 / 3.69 K=5 numbers above remain the documented pre-adoption baseline, left
+unchanged rather than silently rewritten now that the default has moved.
+
 ### Prediction scorecard
 
 Predictions were pre-registered before any v2 run. Scoring them here, no post-hoc
@@ -264,12 +332,125 @@ evidence the discipline is doing something.
 
 n=34 claims. Treat differences under ~.08 recall@5 as noise; several of the "wins"
 described above (hybrid vs dense, weighted vs hybrid within a provider) sit inside or
-near that band and are described accordingly, not as adoption cases. No arm in this
-document is being adopted — that decision is explicitly deferred to a holdout set. The
+near that band and are described accordingly, not as adoption cases. No retrieval arm
+measured in this document is being adopted on this evidence alone — that decision was
+explicitly deferred to a holdout set, and the holdout has since ruled: weighted fusion
+stays held (the holdout was underpowered to adjudicate it); the scan retrieval depth
+swept here (see "Tuning" below) is the one number this phase's holdout did move. The
 residency comparison (Gemini vs Azure at dense) used the Gemini incumbent as the
 baseline, not an unconstrained frontier embedder; whether Azure's residency cost looks
 different against the current best embedding model on the market is open and
 unmeasured.
+
+## Tuning: the scan depth sweep and its holdout verdict
+
+The omission scan (see "End-to-end" above) reaches into the corpus with the full
+promotion text at a configurable depth, `OMISSION_TOP_K`. The tuning phase swept that
+depth against the golden set; the FG15-04 holdout then adjudicated the winner — the
+two-step process the pre-registered adoption rules required.
+
+### The eval-set sweep (diagnostics, not adoption evidence on their own)
+
+`python -m sentinel.eval_judge --mode e2e` at four depths, golden set (26 examples),
+Azure:
+
+| K | overall_accuracy | mean_claim_delta |
+|---|---|---|
+| 5 | 0.500 | 3.69 |
+| 8 | 0.577 | 3.96 |
+| 12 | 0.654 | 4.38 |
+| 20 | 0.615 | 6.04 |
+
+K=12 peaks; K=20 over-generates (delta jumps to 6.04 for lower accuracy than K=12).
+This table is an eval-set diagnostic, not adoption evidence by itself — every number
+here is measured on the same set that would be scoring the decision, the exact failure
+mode v1's weighted-retrieval sweep fell into (see "Retrieval" above). Adoption is
+decided below, against the holdout.
+
+### Miss taxonomy behind the sweep
+
+Root-causing the K=5 baseline's 13 misses (of 26 golden examples) found three separate
+classes, only one of which the K sweep can fix:
+
+- **Judge `needs_review` inflation on context-poor fragments — 10 of 13 misses.** The
+  0.971-accurate judge (see "Judge accuracy" above) turns cautious when a claim is a
+  bare fragment ("£189 per month", an address, even "Representative 24.9% APR
+  (variable)") stripped of the omission framing that would make its significance
+  legible. This is the dominant miss class, and it is a judge/decomposer-context
+  problem, not a retrieval-depth problem — out of this phase's scope, recorded as the
+  next lever after multimodal.
+- **Scan under-emission, retrieval-bound — confirmed.** For several of the same
+  misses, the scan emitted no omission claim at all in the apr-triggers / rep-example /
+  broker areas, consistent with whole-promotion K=5 retrieval missing the triggering
+  provision. This is exactly what the K sweep tests, and the sweep's own accuracy climb
+  (0.500 → 0.654 through K=12) confirms the hypothesis directly.
+- **Two prominence golds, structurally unreachable in a text-only pipeline.** Two
+  golden examples (`needs_review`, on font-size/contrast prominence questions) cannot
+  be scored correctly by any retrieval depth or judge tuning, because the prominence
+  fact they turn on was never in the text at all — it lives in the image. This is
+  exactly the gap the multimodal layer, and the FG15-04 holdout built on it, exists to
+  address.
+
+### Adjudication protocol
+
+Two adoption rules were pre-registered before any holdout number existed: weighted
+retrieval (α=0.5) becomes the default iff it beats dense on both recall@5 and MRR on
+the holdout; `OMISSION_TOP_K` moves to 12 iff holdout e2e accuracy at K=12 is at least
+K=5's. Before the holdout was run, an adversarial review of the built dataset found the
+retrieval half would rest on far fewer corpus-mappable claims than planned (see "The
+FG15-04 holdout" above), and the protocol was amended accordingly — ratified by the
+dataset owner before any holdout number existed, keeping the pre-registration honest
+instead of quietly lowering the bar after seeing a result:
+
+> rule (a) weighted adoption = HELD-for-insufficient-power regardless of numbers
+> (effectively n=1 promotion); rule (b) K comparison = directional smoke only (1
+> example ≈ 11pp; mostly measures judge robustness to irrelevant context)
+
+### Holdout outcomes
+
+**Retrieval smoke (n=3, all from one promotion — see the power-limits note above):**
+dense recall@5 0.833 / MRR 0.528 vs weighted recall@5 0.833 / MRR 0.611. Recall@5 ties
+exactly; the MRR gap is noise at this size. Per the amended protocol, weighted fusion
+**stays held regardless of this outcome** — the holdout was never powered to adjudicate
+it, tie or no tie.
+
+**End-to-end (n=9, corpus-mappable and out-of-corpus claims both included, per the
+harness's existing skip path):** K=5 overall accuracy 0.444 / mean_claim_delta 3.33,
+vs K=12 0.556 / 5.11. K=12 beats K=5 — the directional check passes — by exactly one
+example out of nine.
+
+### Adoption: `OMISSION_TOP_K = 12`
+
+`OMISSION_TOP_K` moves from 5 to 12 (commit `61807c9`), on two-dataset evidence: the
+eval-set sweep's own peak (0.654 at K=12, the best of four depths) plus this
+independent, pre-registered holdout direction (K=12 > K=5). The margin caveat, stated
+verbatim because it is the whole basis for calling this evidence rather than proof:
+**the holdout margin is one example — the disclosed noise quantum.** Weighted
+retrieval (α=0.5) is not adopted alongside it; rule (a) held it back regardless of the
+tied outcome above.
+
+### Prediction scorecard (holdout runs)
+
+Predictions were pre-registered before any holdout run, under the amended protocol:
+both e2e arms in the 0.33–0.55 band (most holdout claims cite out-of-corpus rules, so
+retrieved CONC chunks are structured noise for them — this measures judge robustness to
+irrelevant context more than retrieval); K=12 ≥ K=5 by 0–1 examples; the retrieval
+comparison an uninformative tie.
+
+| # | prediction | actual | verdict |
+|---|---|---|---|
+| 1 | K=5 e2e accuracy in-band (0.33–0.55) | 0.444 | **HIT** |
+| 2 | K=12 e2e accuracy in-band (0.33–0.55) | 0.556 | **miss — marginal**, ~0.006 above the top of the band |
+| 3 | K=12 ≥ K=5 by 0–1 examples (direction + margin) | K=12 beats K=5 by exactly 1 example (5/9 vs 4/9) | **HIT** |
+| 4 | retrieval comparison an uninformative tie | recall@5 tied exactly (0.833 = 0.833); MRR gap is noise at n=3 | **HIT** |
+
+Three of four land outright, and the fourth — K=12's accuracy — missed the band by
+about half a percentage point, on the high side, the same direction the eval-set sweep
+already pointed. This is the first prediction set on this project where the honest
+description is "substantially correct" rather than "wrong, scored honestly": every
+prior scorecard here (the v2 retrieval predictions above, the v2 e2e prediction, the
+omission-scan e2e prediction) missed by far wider margins, several by double-digit
+percentage points. Said plainly, because the prior scorecards said the opposite.
 
 ### Operational notes
 
