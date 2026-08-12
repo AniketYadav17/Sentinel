@@ -69,3 +69,32 @@ def test_load_on_missing_log_exits_with_guidance(tmp_path, monkeypatch):
     monkeypatch.setattr(usage, "USAGE_LOG", tmp_path / "absent.jsonl")
     with pytest.raises(SystemExit, match="no usage log"):
         usage.load(since=None)
+
+
+def test_since_treats_naive_iso_as_utc_not_local():
+    # the log stamps time.time() (UTC epoch); fromisoformat's default reading of a naive
+    # string is LOCAL, which silently under-filters by the UTC offset
+    from datetime import datetime, timezone
+
+    assert usage.parse_since("2026-08-12T15:44:07") == datetime(
+        2026, 8, 12, 15, 44, 7, tzinfo=timezone.utc
+    ).timestamp()
+
+
+def test_since_respects_an_explicit_offset():
+    from datetime import datetime, timezone
+
+    assert usage.parse_since("2026-08-12T21:14:07+05:30") == datetime(
+        2026, 8, 12, 15, 44, 7, tzinfo=timezone.utc
+    ).timestamp()
+
+
+def test_since_filters_at_the_utc_boundary(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+
+    t = datetime(2026, 8, 12, 15, 44, 7, tzinfo=timezone.utc).timestamp()
+    log = tmp_path / "usage.jsonl"
+    rows = [dict(ROWS[0], ts=t - 1), dict(ROWS[0], ts=t + 1)]
+    log.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+    monkeypatch.setattr(usage, "USAGE_LOG", log)
+    assert len(usage.load(since=usage.parse_since("2026-08-12T15:44:07"))) == 1

@@ -7,7 +7,7 @@ Cache hits never reach the transport, so these are first-live-run figures, not p
 import argparse
 import statistics
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sentinel.index import read_jsonl
 from sentinel.llm import USAGE_LOG
@@ -19,6 +19,16 @@ RATES = {
     "sentinel-judge": (0.40, 1.60),  # gpt-4.1-mini
     "sentinel-embed": (0.13, 0.0),  # text-embedding-3-large
 }
+
+
+def parse_since(text: str) -> float:
+    """ISO timestamp -> epoch seconds. Naive input is UTC, matching `date -u` and the log's time.time().
+
+    Reading it as local time (fromisoformat's default) silently under-filters by the UTC offset —
+    a filter that quietly returns too much is worse than one that errors.
+    """
+    stamp = datetime.fromisoformat(text)
+    return (stamp.replace(tzinfo=timezone.utc) if stamp.tzinfo is None else stamp).timestamp()
 
 
 def load(since: float | None) -> list[dict]:
@@ -49,9 +59,9 @@ def summarize(rows: list[dict]) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--since", help="ISO timestamp, e.g. 2026-08-12T09:00 — cost one run, not all history")
+    parser.add_argument("--since", help="ISO timestamp in UTC, e.g. 2026-08-12T09:00 — cost one run, not all history")
     args = parser.parse_args()
-    since = datetime.fromisoformat(args.since).timestamp() if args.since else None
+    since = parse_since(args.since) if args.since else None
     summary = summarize(load(since))
     total = sum(d["usd"] for d in summary.values())
     print(f"\n== live model usage{' since ' + args.since if args.since else ''} ==")
