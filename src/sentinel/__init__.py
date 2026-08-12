@@ -1,1 +1,1 @@
-"""Sentinel — audits fintech customer communications against the FCA Handbook."""
+"""Sentinel: Audits fintech financial promotion against the FCA Handbook."""
