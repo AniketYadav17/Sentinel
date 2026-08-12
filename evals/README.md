@@ -205,7 +205,7 @@ providers**: Gemini .882/.827 vs dense .809/.782; Azure .814/.833 vs dense .740/
 (Hybrid comes close but only ties Gemini's dense recall@5, .809 = .809, rather than
 beating it.) This matters because of what α=0.5 *isn't*: v1's weighted arm only won by
 sweeping to α=0.9 on the same golden set that scored it, and was explicitly held back
-from adoption for exactly that reason (see git history, commit `0baf070`) — a
+from adoption for exactly that reason (see git history, commit `ec9c160`) — a
 hyperparameter tuned on the only labelled data available isn't evidence of a real win.
 v2's α=0.5 is the pre-registered default, never swept or tuned on this or any golden
 set, and it still clears dense on both metrics on both providers. That's a
@@ -442,7 +442,7 @@ example out of nine.
 
 ### Adoption: `OMISSION_TOP_K = 12`
 
-`OMISSION_TOP_K` moves from 5 to 12 (commit `61807c9`), on two-dataset evidence: the
+`OMISSION_TOP_K` moves from 5 to 12 (commit `a5404d9`), on two-dataset evidence: the
 eval-set sweep's own peak (0.654 at K=12, the best of four depths) plus this
 independent, pre-registered holdout direction (K=12 > K=5). The margin caveat, stated
 verbatim because it is the whole basis for calling this evidence rather than proof:
