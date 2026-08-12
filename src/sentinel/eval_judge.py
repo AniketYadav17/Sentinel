@@ -51,6 +51,7 @@ def judge_metrics(rows: list[dict]) -> dict:
         "per_class": per_class,
         "citation_hit": (sum(bool(r["gold_rules_norm"] & {normalize_rule_id(x) for x in r["pred"]["rule_ids"]})
                              for r in cited) / len(cited)) if cited else 0.0,
+        "ungrounded_rate": (sum(r["ungrounded"] for r in rows) / n) if n else 0.0,
         "by_area": {a: sum(v) / len(v) for a, v in sorted(by_area.items())},
     }
 
@@ -58,6 +59,7 @@ def judge_metrics(rows: list[dict]) -> dict:
 def print_metrics(m: dict) -> None:
     print(f"\n== judge accuracy ({m['n']} claims) ==")
     print(f"accuracy {m['accuracy']:.3f}  citation_hit {m['citation_hit']:.3f}")
+    print(f"ungrounded_rate {m['ungrounded_rate']:.3f}  (cited a rule id absent from the corpus)")
     for v, s in m["per_class"].items():
         print(f"  {v:<13} precision {s['precision']:.3f}  recall {s['recall']:.3f}  (n={s['n']})")
     print("  confusion (gold -> pred):", {f"{g}->{p}": c for (g, p), c in sorted(m["confusion"].items())})
@@ -66,19 +68,29 @@ def print_metrics(m: dict) -> None:
     print("note: citation_hit is bounded by retrieval recall — see the retrieval trade-off table (evals/README.md)")
 
 
-def run_judge_mode(root: Path) -> None:
+def run_judge_mode(root: Path, *, full_corpus: bool = False) -> None:
+    """full_corpus: the control arm — every chunk in the prompt instead of dense top-K.
+
+    Known Gap #2: retrieval has never been measured against simply stuffing the 21K-token
+    corpus in. Identical in every other respect so the comparison is attributable.
+    """
     index = Index.load(root / "data")
     claims = load_golden_claims(root / "evals" / "golden.jsonl")
-    vectors = query_vectors([c["claim"] for c in claims], root / "data" / "embeddings" / "queries.jsonl")
+    corpus_ids = {c["rule_id"] for c in index.chunks}
+    vectors = [None] * len(claims) if full_corpus else query_vectors(
+        [c["claim"] for c in claims], root / "data" / "embeddings" / "queries.jsonl"
+    )
     rows = []
     RESULTS_PATH.parent.mkdir(parents=True, exist_ok=True)
     tmp = RESULTS_PATH.with_suffix(".jsonl.tmp")
     with tmp.open("w", encoding="utf-8") as f:
         for c, v in zip(claims, vectors):
-            provisions = index.search_dense(v, TOP_K)
+            provisions = index.chunks if full_corpus else index.search_dense(v, TOP_K)
             pred = generate_json(judge_prompt(c["claim"], c["channel"], c["input_text"], provisions), JUDGE_SCHEMA)
             row = {"gold": {"verdict": c["verdict"]}, "pred": pred,
-                   "gold_rules_norm": {normalize_rule_id(r) for r in c["rules"]}, "area": c["area"]}
+                   "gold_rules_norm": {normalize_rule_id(r) for r in c["rules"]}, "area": c["area"],
+                   # with the whole corpus in context the grounding check is vacuous — this is its replacement
+                   "ungrounded": not {normalize_rule_id(r) for r in pred["rule_ids"]} <= corpus_ids}
             rows.append(row)
             f.write(json.dumps({"claim": c["claim"], "pred": pred, "area": c["area"],
                                 "contexts": [p["text"] for p in provisions]}) + "\n")
@@ -88,11 +100,13 @@ def run_judge_mode(root: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mode", choices=("judge", "e2e", "ragas"), default="judge")
+    parser.add_argument("--mode", choices=("judge", "judge-fullcorpus", "e2e", "ragas"), default="judge")
     args = parser.parse_args()
     root = Path(__file__).parents[2]
     if args.mode == "judge":
         run_judge_mode(root)
+    elif args.mode == "judge-fullcorpus":
+        run_judge_mode(root, full_corpus=True)
     elif args.mode == "e2e":
         from sentinel.eval_judge_e2e import run_e2e_mode  # Task 5
 
