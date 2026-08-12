@@ -26,6 +26,7 @@ STATE_DIR = Path(os.environ.get("SENTINEL_STATE_DIR") or Path(__file__).parents[
 app = FastAPI(title="Sentinel", description="Audits UK financial promotions against the FCA Handbook.")
 
 _GRAPH = None
+_CONN = None
 _LOCK = threading.Lock()  # ponytail: one lock for the whole graph — correct at one replica and one reviewer, revisit if throughput ever matters
 
 
@@ -36,13 +37,21 @@ class AuditRequest(BaseModel):
 
 def _graph():
     """Built once per process, over a sqlite file that outlives the process."""
-    global _GRAPH
+    global _GRAPH, _CONN
     if _GRAPH is None:
         STATE_DIR.mkdir(parents=True, exist_ok=True)
+        if _CONN is not None:
+            _CONN.close()  # a real restart closes it; an in-process rebuild must too, or the new connection cannot take the exclusive lock below
         # check_same_thread=False: FastAPI runs sync endpoints on a threadpool, so the
         # connection is touched from several threads. _LOCK is what serializes them.
-        conn = sqlite3.connect(STATE_DIR / "reviews.db", check_same_thread=False)
-        _GRAPH = build_graph(default_searcher(), checkpointer=SqliteSaver(conn))
+        _CONN = sqlite3.connect(STATE_DIR / "reviews.db", check_same_thread=False)
+        saver = SqliteSaver(_CONN)
+        saver.setup()  # creates the tables — and sets journal_mode=WAL, which is why the override comes after
+        # WAL needs a shared-memory -shm file. Azure Files is SMB and does not support that
+        # reliably, so the deployed queue is the one place it would break. DELETE journalling
+        # costs concurrency we do not have anyway: max-replicas is 1 and _LOCK serializes writers.
+        _CONN.execute("PRAGMA journal_mode=DELETE")
+        _GRAPH = build_graph(default_searcher(), checkpointer=saver)
     return _GRAPH
 
 
