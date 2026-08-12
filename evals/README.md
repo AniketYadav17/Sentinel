@@ -15,6 +15,30 @@ Every label is anchored to an FCA publication via a per-claim `label_authority` 
 - [Car finance case study transcript](https://www.fca.org.uk/publication/documents/transcript-case-study-1-car-finance-video.pdf) — the FCA's own promotion checklist.
 - The [FCA Handbook, CONC 3](https://www.handbook.fca.org.uk/handbook/CONC/3/) live text (compliant controls cite the operative rule wording directly).
 
+## The firms in this dataset are invented
+
+Every firm, domain, phone number and address in `golden.jsonl` is fictitious. The
+promotions are written to carry the breach patterns the FCA's publications name; no
+example describes, quotes or alleges anything about a real business. Before this repo was
+first published, all 26 invented names were swept against public sources. The record:
+
+- **No exact match for any of the 26 names**, in any sector or jurisdiction.
+- **Nearest real-world neighbours** — none of them the same name, listed so the check is
+  auditable rather than asserted: Otter Vale Motor Services Ltd (Honiton; a real used-car
+  dealer that offers finance, and the closest collision in the set — one space away from
+  this dataset's "Ottervale Car Finance"), Copperfin Credit Union (Ontario), Bramblegate
+  Limited (a UK non-trading company, dissolved January 2026), The Redshank Group Ltd
+  (Portsmouth, IT services), Thistlemoor Medical Centre (Peterborough), Tarnwell Polska
+  (Polish plastics manufacturer).
+- **Domains:** all ten invented `.co.uk` domains fail to resolve — none is a live site.
+- **Phone number:** the one number in the set, `0161 496 0210`, sits inside Ofcom's
+  reserved drama range for Manchester (`0161 496 0000`–`0999`), which exists so that
+  fiction never dials a real line.
+- **Addresses:** real postcode districts, invented street names (there is no Dockside Walk
+  in M4). No example address resolves to a real premises.
+
+Re-run this sweep before adding any new named firm.
+
 ## Schema (`golden.jsonl`, one JSON object per line)
 
 | field | meaning |
