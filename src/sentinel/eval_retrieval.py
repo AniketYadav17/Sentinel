@@ -14,6 +14,7 @@ from pathlib import Path
 
 from sentinel.embed import DIM, MODEL as EMBED_MODEL, embed_texts
 from sentinel.index import Index, read_jsonl
+from sentinel.llm import CONSUMED
 
 KS = (3, 5, 10)
 
@@ -75,7 +76,9 @@ def query_vectors(queries: list[str], cache_path: Path) -> list[list[float]]:
             for q, v in zip(missing, vectors):
                 cache[sha(q)] = v
                 f.write(json.dumps({"sha": sha(q), "vector": v}) + "\n")
-    return [cache[sha(q)] for q in queries]
+    shas = [sha(q) for q in queries]
+    CONSUMED.extend(shas)  # query vectors are inputs too — a lost one is what broke e2e reproducibility
+    return [cache[s] for s in shas]
 
 
 def _print_table(mode: str, rows: list[dict]) -> None:
