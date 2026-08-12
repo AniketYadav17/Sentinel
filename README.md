@@ -2,14 +2,14 @@
 
 Compliance copilot for UK financial promotions. Audits fintech marketing copy against the [FCA Handbook](https://www.handbook.fca.org.uk/) and flags potential breaches with cited evidence.
 
-The premise: agentic RAG systems in regulated domains are only deployable if you can prove they work. So this is built eval-first — the golden dataset and regression gate come before the pipeline, and every retrieval/prompt/model change has to pass the eval suite in CI before it merges.
+The premise: agentic RAG systems in regulated domains are only deployable if you can prove they work. So this is built eval-first — the golden dataset comes before the pipeline, and the offline suite (unit tests plus the structural-integrity checks on `golden.jsonl` and `holdout.jsonl`) runs in CI on every push and pull request. The metric evals — retrieval, judge accuracy, end-to-end — need live model calls, so they are run manually and published with their numbers and their misses in [`evals/README.md`](evals/README.md); CI does not gate those, and this line says so rather than implying otherwise.
 
 ## Rough shape (will evolve)
 
 - FCA Handbook ingestion with rule-aware chunking (sourcebook / chapter / rule-id metadata)
 - Hybrid retrieval: BM25 + dense with score fusion, in Postgres/pgvector
 - LangGraph audit workflow: claim decomposition → per-claim retrieval → structured compliance judgement → human-review routing for low-confidence calls
-- Eval suite as the backbone: FCA-sourced golden set + deterministic metrics, wired into CI as a merge gate
+- Eval suite as the backbone: FCA-sourced golden set + deterministic metrics; the offline half runs in CI, the metric half is run and published by hand
 
 ## Status
 

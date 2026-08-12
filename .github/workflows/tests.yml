@@ -1,0 +1,23 @@
+name: tests
+
+# Gates what can actually be gated without model calls: the unit suite plus the
+# dataset-integrity checks on golden.jsonl / holdout.jsonl. The metric evals
+# (retrieval, judge, e2e) need live Azure calls and are run manually — see
+# evals/README.md. Corpus-dependent assertions skip here by design: data/ is
+# local-only, so the checks that read data/chunks are marked skipif.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --group mcp  # --frozen fails the build on a stale uv.lock
+      - run: uv run pytest -q
