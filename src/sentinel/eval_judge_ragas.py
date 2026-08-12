@@ -1,12 +1,12 @@
 """Ragas faithfulness + context precision over a sample of judge rationales (optional group evals-llm)."""
 
-import json
 import os
 import random
 import sys
 from pathlib import Path
 
 from sentinel.eval_judge import RESULTS_PATH
+from sentinel.index import read_jsonl
 
 RAGAS_SAMPLE = 50
 
@@ -21,7 +21,7 @@ def run_ragas_mode(root: Path) -> None:
         raise SystemExit("ragas group not installed — run: uv sync --group evals-llm") from None
     if not RESULTS_PATH.exists():
         raise SystemExit("no judge results — run python -m sentinel.eval_judge --mode judge first")
-    rows = [json.loads(l) for l in RESULTS_PATH.read_text(encoding="utf-8").splitlines() if l]
+    rows = read_jsonl(RESULTS_PATH)
     rows = random.Random(0).sample(rows, min(RAGAS_SAMPLE, len(rows)))
     dataset = EvaluationDataset.from_list([
         {"user_input": r["claim"], "response": r["pred"]["rationale"], "retrieved_contexts": r["contexts"]}

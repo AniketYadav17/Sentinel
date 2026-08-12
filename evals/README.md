@@ -149,6 +149,14 @@ scorecard.
 `python -m sentinel.eval_retrieval --mode all`, one query per golden claim, ground truth
 = the claim's cited rule ids at chunk granularity.
 
+Four arms ship: `bm25`, `dense`, `hybrid` (RRF), `weighted`. Two more were built and
+measured on the v1 dataset and failed their gate there — a cross-encoder reranker
+(`ms-marco-MiniLM-L-6-v2`) and contextual-blurb embeddings (`dense-ctx`, one generated
+blurb prepended per chunk before embedding). Their numbers were deleted with the rest of
+v1 in the ground-truth rebuild, and the code came out at the v2 close rather than being
+carried as Gemini-era arms that crash if run. Both are recoverable from git history if
+either is ever re-measured against v2.
+
 **Gemini (control)**
 
 | mode | recall@3 | recall@5 | recall@10 | hit@3 | hit@5 | hit@10 | MRR |

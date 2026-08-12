@@ -1,7 +1,7 @@
 """fca-handbook MCP server: read-only handbook retrieval for any MCP client (optional group: mcp).
 
 Usage: python -m sentinel.mcp_server   (stdio transport)
-Dense mode needs AZURE_OPENAI_API_KEY for query embedding; bm25 mode is fully offline.
+Dense mode needs AZURE_OPENAI_ENDPOINT + AZURE_OPENAI_API_KEY for query embedding; bm25 mode is fully offline.
 """
 
 from pathlib import Path
@@ -23,10 +23,8 @@ def make_server(index) -> FastMCP:
                 chunks = index.search_dense(embed_texts([query])[0], k)
             except SystemExit as e:
                 raise RuntimeError(str(e)) from None
-        elif mode == "bm25":
+        else:  # bm25 — the Literal hint makes pydantic reject anything else before we get here
             chunks = index.search_bm25(query, k)
-        else:
-            raise ValueError(f"unknown mode {mode!r} — use dense or bm25")
         return [{"rule_id": c["rule_id"], "designation": c["designation"], "section": c["section"], "text": c["text"]} for c in chunks]
 
     @server.tool()

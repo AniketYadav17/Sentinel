@@ -36,18 +36,18 @@ class Index:
         self._df = Counter(term for d in docs for term in set(d))
 
     @classmethod
-    def load(cls, data_dir: Path, embeddings_dir: str = "embeddings") -> "Index":
+    def load(cls, data_dir: Path) -> "Index":
         chunk_files = sorted((data_dir / "chunks").glob("*.jsonl"))
         if not chunk_files:
             raise FileNotFoundError("no chunk files in data/chunks — run python -m sentinel.ingest first")
         chunks: list[dict] = []
         vectors: list[list[float]] = []
         for cf in chunk_files:
-            ef = data_dir / embeddings_dir / cf.name
+            ef = data_dir / "embeddings" / cf.name
             if not ef.exists():
-                raise FileNotFoundError(f"{ef} missing — run python -m sentinel.embed (or python -m sentinel.blurbs for the ctx arm)")
-            emb = {r["rule_id"]: r["vector"] for r in _read_jsonl(ef)}
-            for c in _read_jsonl(cf):
+                raise FileNotFoundError(f"{ef} missing — run python -m sentinel.embed")
+            emb = {r["rule_id"]: r["vector"] for r in read_jsonl(ef)}
+            for c in read_jsonl(cf):
                 if c["rule_id"] not in emb:
                     raise ValueError(f"no embedding for {c['rule_id']} — re-run python -m sentinel.embed")
                 chunks.append(c)
@@ -105,5 +105,6 @@ class Index:
         return sorted(range(len(scores)), key=scores.__getitem__, reverse=True)[:k]
 
 
-def _read_jsonl(path: Path) -> list[dict]:
+def read_jsonl(path: Path) -> list[dict]:
+    """Shared by every module that reads a corpus/eval/cache .jsonl file."""
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]

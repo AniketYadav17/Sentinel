@@ -1,6 +1,8 @@
-"""Azure OpenAI structured-output seam — stdlib urllib, disk-cached, provider swap = this one file.
+"""Azure OpenAI seam — stdlib urllib, disk-cached, provider swap = this one file.
 
-Used by the audit graph and evals. Requires AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY
+`post` (plus `chat_content` for chat-shaped payloads) is the shared transport: embed.py
+and extract.py call it too, so the retry and error contract lives in exactly one place.
+Requires AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY
 (AZURE_OPENAI_CHAT_DEPLOYMENT optional, default "sentinel-judge").
 """
 
@@ -17,40 +19,24 @@ MODEL = "gpt-4.1-mini"  # cache-key identity — the real model, not the deploym
 CACHE_DIR = Path(__file__).parents[2] / "data" / "cache" / "llm"
 
 
-def generate_json(prompt: str, schema: dict, *, cache: bool = True) -> dict:
-    """One structured-output call: prompt + json_schema -> parsed JSON object."""
-    key_material = "\x00".join((MODEL, prompt, json.dumps(schema, sort_keys=True)))  # separator kills prompt/schema boundary ambiguity
-    cache_path = CACHE_DIR / (hashlib.sha256(key_material.encode()).hexdigest() + ".json")
-    if cache and cache_path.exists():
-        return json.loads(cache_path.read_text(encoding="utf-8"))
+def post(path: str, body: dict) -> dict:
+    """POST to the Azure OpenAI data plane (path e.g. "chat/completions") — one retry, then loud."""
     endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT") or sys.exit(
         "AZURE_OPENAI_ENDPOINT not set — set it to your Azure OpenAI resource endpoint"
     )
     api_key = os.environ.get("AZURE_OPENAI_API_KEY") or sys.exit(
         "AZURE_OPENAI_API_KEY not set — set it to your Azure OpenAI resource key"
     )
-    deployment = os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT", "sentinel-judge")
-    url = f"{endpoint.rstrip('/')}/openai/v1/chat/completions"
-    body = json.dumps(
-        {
-            "model": deployment,
-            "temperature": 0,
-            "messages": [{"role": "user", "content": prompt}],
-            "response_format": {
-                "type": "json_schema",
-                "json_schema": {"name": "response", "strict": True, "schema": schema},
-            },
-        }
-    ).encode()
     req = urllib.request.Request(
-        url, data=body, headers={"Content-Type": "application/json", "api-key": api_key}
+        f"{endpoint.rstrip('/')}/openai/v1/{path}",
+        data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json", "api-key": api_key},
     )
     for attempt in (1, 2):
         try:
             with urllib.request.urlopen(req, timeout=60) as resp:
-                payload = json.load(resp)
-            break
-        except urllib.error.HTTPError as e:
+                return json.load(resp)
+        except urllib.error.HTTPError as e:  # subclass of URLError — this clause stays first
             if e.code == 429 and attempt == 1:
                 time.sleep(int(e.headers.get("Retry-After") or 60))
                 continue
@@ -60,6 +46,10 @@ def generate_json(prompt: str, schema: dict, *, cache: bool = True) -> dict:
                 time.sleep(5)  # transient connection drops kill long runs; one retry, then loud
                 continue
             raise RuntimeError(f"Azure OpenAI network failure after retry: {e.reason}") from None
+
+
+def chat_content(payload: dict) -> str:
+    """The one message string from a chat completion — every non-'stop' outcome raises."""
     choices = payload.get("choices") or []
     if not choices:
         raise RuntimeError(f"Azure OpenAI returned no choices: {json.dumps(payload)[:500]}")
@@ -69,7 +59,29 @@ def generate_json(prompt: str, schema: dict, *, cache: bool = True) -> dict:
     finish_reason = choices[0].get("finish_reason")
     if finish_reason != "stop":
         raise RuntimeError(f"Azure OpenAI finished with reason {finish_reason!r}, not 'stop'")
-    text = message["content"]
+    return message["content"]
+
+
+def generate_json(prompt: str, schema: dict, *, cache: bool = True) -> dict:
+    """One structured-output call: prompt + json_schema -> parsed JSON object."""
+    key_material = "\x00".join((MODEL, prompt, json.dumps(schema, sort_keys=True)))  # separator kills prompt/schema boundary ambiguity
+    cache_path = CACHE_DIR / (hashlib.sha256(key_material.encode()).hexdigest() + ".json")
+    if cache and cache_path.exists():
+        return json.loads(cache_path.read_text(encoding="utf-8"))
+    text = chat_content(
+        post(
+            "chat/completions",
+            {
+                "model": os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT", "sentinel-judge"),
+                "temperature": 0,
+                "messages": [{"role": "user", "content": prompt}],
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {"name": "response", "strict": True, "schema": schema},
+                },
+            },
+        )
+    )
     try:
         result = json.loads(text)
     except json.JSONDecodeError:

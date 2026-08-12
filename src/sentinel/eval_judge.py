@@ -13,7 +13,7 @@ from pathlib import Path
 
 from sentinel.audit import JUDGE_SCHEMA, TOP_K, judge_prompt
 from sentinel.eval_retrieval import normalize_rule_id, query_vectors
-from sentinel.index import Index
+from sentinel.index import Index, read_jsonl
 from sentinel.llm import generate_json
 
 VERDICTS = ("breach", "compliant", "needs_review")
@@ -22,10 +22,7 @@ RESULTS_PATH = Path(__file__).parents[2] / "data" / "cache" / "judge_results.jso
 
 def load_golden_claims(path: Path) -> list[dict]:
     out = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line:
-            continue
-        ex = json.loads(line)
+    for ex in read_jsonl(path):
         for c in ex["claims"]:
             out.append({"claim": c["claim"], "verdict": c["verdict"],
                         "rules": c["rules"], "area": ex["area"], "channel": ex["channel"],

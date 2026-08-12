@@ -47,6 +47,7 @@ def test_returns_parsed_json(env, monkeypatch):
     assert body["temperature"] == 0
     assert body["response_format"]["json_schema"]["strict"] is True
     assert captured["req"].get_header("Api-key") == "test-key"
+    assert captured["req"].full_url.endswith("/openai/v1/chat/completions")
 
 
 def test_cache_hit_skips_network(env, monkeypatch):
@@ -91,6 +92,34 @@ def test_429_honors_retry_after_header(env, monkeypatch):
     monkeypatch.setattr(llm.time, "sleep", sleeps.append)
     assert llm.generate_json("p", SCHEMA) == {"x": "ok"}
     assert sleeps == [7]
+
+
+def test_429_defaults_to_60_without_header(env, monkeypatch):
+    sleeps = []
+    calls = []
+
+    def flaky(req, timeout):
+        calls.append(1)
+        if len(calls) == 1:
+            raise urllib.error.HTTPError("u", 429, "quota", {}, BytesIO(b"quota"))
+        return _resp(_azure_ok('{"x": "ok"}'))
+
+    monkeypatch.setattr(llm.urllib.request, "urlopen", flaky)
+    monkeypatch.setattr(llm.time, "sleep", sleeps.append)
+    assert llm.generate_json("p-429-default", SCHEMA) == {"x": "ok"}
+    assert sleeps == [60]
+
+
+def test_missing_endpoint_exits_with_message(env, monkeypatch):
+    monkeypatch.delenv("AZURE_OPENAI_ENDPOINT", raising=False)
+    with pytest.raises(SystemExit, match="AZURE_OPENAI_ENDPOINT"):
+        llm.generate_json("p-no-endpoint", SCHEMA)
+
+
+def test_missing_api_key_exits_with_message(env, monkeypatch):
+    monkeypatch.delenv("AZURE_OPENAI_API_KEY", raising=False)
+    with pytest.raises(SystemExit, match="AZURE_OPENAI_API_KEY"):
+        llm.generate_json("p-no-key", SCHEMA)
 
 
 def test_http_error_surfaces_body(env, monkeypatch):

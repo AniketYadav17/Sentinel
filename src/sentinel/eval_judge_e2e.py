@@ -1,9 +1,10 @@
 """End-to-end eval (secondary): full graph per golden example, example-level scoring only."""
 
-import json
 from pathlib import Path
 
 from langgraph.types import Command
+
+from sentinel.index import read_jsonl
 
 
 def e2e_rows(examples: list[dict], run_example) -> dict:
@@ -21,7 +22,7 @@ def run_e2e_mode(root: Path) -> None:
     from sentinel.audit import build_graph, default_searcher
 
     graph = build_graph(default_searcher())
-    examples = [json.loads(l) for l in (root / "evals" / "golden.jsonl").read_text(encoding="utf-8").splitlines() if l]
+    examples = read_jsonl(root / "evals" / "golden.jsonl")
 
     def run_example(ex: dict) -> dict:
         config = {"configurable": {"thread_id": ex["id"]}}

@@ -8,13 +8,10 @@ untrusted communication — image-borne instructions become inert transcription.
 
 import base64
 import hashlib
-import json
 import os
-import sys
-import time
-import urllib.error
-import urllib.request
 from pathlib import Path
+
+from sentinel.llm import chat_content, post
 
 MODEL = "gpt-4.1-mini"  # cache-key identity — the real model behind sentinel-judge, not the deployment alias; bump alongside llm.py's MODEL on a provider swap
 CACHE_DIR = Path(__file__).parents[2] / "data" / "cache" / "extract"
@@ -46,60 +43,25 @@ def annotate_image(path: Path) -> str:
     cache_path = CACHE_DIR / (hashlib.sha256(key_material).hexdigest() + ".txt")
     if cache_path.exists():
         return cache_path.read_text(encoding="utf-8")
-    endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT") or sys.exit(
-        "AZURE_OPENAI_ENDPOINT not set — set it to your Azure OpenAI resource endpoint"
-    )
-    api_key = os.environ.get("AZURE_OPENAI_API_KEY") or sys.exit(
-        "AZURE_OPENAI_API_KEY not set — set it to your Azure OpenAI resource key"
-    )
-    deployment = os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT", "sentinel-judge")
-    url = f"{endpoint.rstrip('/')}/openai/v1/chat/completions"
     data_url = f"data:image/{media_type};base64,{base64.b64encode(data).decode()}"
-    body = json.dumps(
-        {
-            "model": deployment,
-            "temperature": 0,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": ANNOTATE_PROMPT},
-                        {"type": "image_url", "image_url": {"url": data_url}},
-                    ],
-                }
-            ],
-        }
-    ).encode()
-    req = urllib.request.Request(
-        url, data=body, headers={"Content-Type": "application/json", "api-key": api_key}
+    text = chat_content(
+        post(
+            "chat/completions",
+            {
+                "model": os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT", "sentinel-judge"),
+                "temperature": 0,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": ANNOTATE_PROMPT},
+                            {"type": "image_url", "image_url": {"url": data_url}},
+                        ],
+                    }
+                ],
+            },
+        )
     )
-    # Third copy of this retry loop (llm.py has the first two call sites) — ledgered debt,
-    # a shared retry helper is deferred to a future refactor, not this task.
-    for attempt in (1, 2):
-        try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                payload = json.load(resp)
-            break
-        except urllib.error.HTTPError as e:
-            if e.code == 429 and attempt == 1:
-                time.sleep(int(e.headers.get("Retry-After") or 60))
-                continue
-            raise RuntimeError(f"Azure OpenAI HTTP {e.code}: {e.read().decode(errors='replace')}") from None
-        except urllib.error.URLError as e:
-            if attempt == 1:
-                time.sleep(5)  # transient connection drops kill long runs; one retry, then loud
-                continue
-            raise RuntimeError(f"Azure OpenAI network failure after retry: {e.reason}") from None
-    choices = payload.get("choices") or []
-    if not choices:
-        raise RuntimeError(f"Azure OpenAI returned no choices: {json.dumps(payload)[:500]}")
-    message = choices[0]["message"]
-    if message.get("refusal"):
-        raise RuntimeError(f"Azure OpenAI refused: {message['refusal']}")
-    finish_reason = choices[0].get("finish_reason")
-    if finish_reason != "stop":
-        raise RuntimeError(f"Azure OpenAI finished with reason {finish_reason!r}, not 'stop'")
-    text = message["content"]
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     cache_path.write_text(text, encoding="utf-8")
     return text

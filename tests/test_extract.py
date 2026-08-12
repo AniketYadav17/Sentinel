@@ -6,6 +6,7 @@ from io import BytesIO
 import pytest
 
 import sentinel.extract as extract
+import sentinel.llm as llm  # the shared transport annotate_image posts through
 
 PNG_BYTES = b"\x89PNG\r\n\x1a\nfake-png-bytes-for-test"
 
@@ -48,7 +49,7 @@ def test_wire_shape(env, png_file, monkeypatch):
         captured["req"] = req
         return _resp(_azure_ok("[headline · large · bold] DRIVE AWAY TODAY"))
 
-    monkeypatch.setattr(extract.urllib.request, "urlopen", fake)
+    monkeypatch.setattr(llm.urllib.request, "urlopen", fake)
     result = extract.annotate_image(png_file)
     assert result == "[headline · large · bold] DRIVE AWAY TODAY"
 
@@ -70,14 +71,14 @@ def test_wire_shape(env, png_file, monkeypatch):
 
 def test_cache_hit_skips_network(env, png_file, monkeypatch):
     monkeypatch.setattr(
-        extract.urllib.request, "urlopen", lambda req, timeout: _resp(_azure_ok("annotated text"))
+        llm.urllib.request, "urlopen", lambda req, timeout: _resp(_azure_ok("annotated text"))
     )
     first = extract.annotate_image(png_file)
 
     def boom(req, timeout):
         raise AssertionError("network hit on cached call")
 
-    monkeypatch.setattr(extract.urllib.request, "urlopen", boom)
+    monkeypatch.setattr(llm.urllib.request, "urlopen", boom)
     second = extract.annotate_image(png_file)
     assert first == second == "annotated text"
 
@@ -95,7 +96,7 @@ def test_cache_key_is_model_and_prompt_scoped(env, png_file, monkeypatch):
     cache_dir.mkdir(parents=True, exist_ok=True)
     (cache_dir / (stale_key + ".txt")).write_text("stale annotation", encoding="utf-8")
 
-    monkeypatch.setattr(extract.urllib.request, "urlopen", fake)
+    monkeypatch.setattr(llm.urllib.request, "urlopen", fake)
     result = extract.annotate_image(png_file)
 
     assert calls == [1]  # stale entry was a miss -> re-annotated over the network
@@ -109,26 +110,4 @@ def test_unsupported_extension_raises_systemexit(env, tmp_path):
         extract.annotate_image(path)
 
 
-def test_refusal_raises_runtime_error(env, png_file, monkeypatch):
-    payload = {
-        "choices": [
-            {"finish_reason": "content_filter", "message": {"content": None, "refusal": "cannot help with that"}}
-        ]
-    }
-    monkeypatch.setattr(extract.urllib.request, "urlopen", lambda req, timeout: _resp(payload))
-    with pytest.raises(RuntimeError, match="cannot help with that"):
-        extract.annotate_image(png_file)
-
-
-def test_empty_choices_raises_loudly(env, png_file, monkeypatch):
-    monkeypatch.setattr(extract.urllib.request, "urlopen", lambda req, timeout: _resp({"choices": []}))
-    with pytest.raises(RuntimeError, match="no choices"):
-        extract.annotate_image(png_file)
-
-
-def test_finish_reason_not_stop_raises(env, png_file, monkeypatch):
-    payload = _azure_ok("partial text")
-    payload["choices"][0]["finish_reason"] = "length"
-    monkeypatch.setattr(extract.urllib.request, "urlopen", lambda req, timeout: _resp(payload))
-    with pytest.raises(RuntimeError, match="length"):
-        extract.annotate_image(png_file)
+# refusal / empty-choices / non-stop finish_reason are llm.chat_content's contract now — tested once, in test_llm.py

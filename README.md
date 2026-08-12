@@ -7,7 +7,7 @@ The premise: agentic RAG systems in regulated domains are only deployable if you
 ## Rough shape (will evolve)
 
 - FCA Handbook ingestion with rule-aware chunking (sourcebook / chapter / rule-id metadata)
-- Hybrid retrieval: BM25 + dense with reranking, in Postgres/pgvector
+- Hybrid retrieval: BM25 + dense with score fusion, in Postgres/pgvector
 - LangGraph audit workflow: claim decomposition → per-claim retrieval → structured compliance judgement → human-review routing for low-confidence calls
 - Eval suite as the backbone: FCA-sourced golden set + deterministic metrics, wired into CI as a merge gate
 
