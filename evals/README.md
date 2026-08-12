@@ -262,6 +262,26 @@ property v1's headline number lacked, since v1's accuracy measured agreement bet
 LLM-generated labels and an LLM judge, which is agreement with itself. v2's agreement is
 between two independent judge families and FCA-anchored ground truth.
 
+#### Full-corpus control arm — predictions, recorded before the run
+
+CONC 3 is 86 chunks, about 21K tokens, so the whole corpus fits in a single judge prompt.
+Retrieval has never been measured against simply putting all of it in the prompt, which
+means the retrieval layer has never been shown to earn its keep at this scale.
+`--mode judge-fullcorpus` is that control arm: identical to `--mode judge` in every
+respect except which provisions reach `judge_prompt`.
+
+Recorded 2026-08-12, before any full-corpus call was made. Scoring rule fixed at the same
+time: a prediction misses if the measured value falls outside its stated band or
+contradicts its stated direction, and bands are not widened after seeing the data.
+
+| # | Prediction | Mechanism |
+|---|---|---|
+| 1 | Verdict accuracy ≤ 0.971, most likely 0.912–0.971 (31–33 of 34) | Almost nothing to win: dense already scores 33/34 and its single miss is conservative, so the upside is one claim. Against that, the class-A miss taxonomy says this judge is context-composition-sensitive, and 86 chunks maximises that. Asymmetric downside. |
+| 2 | `ungrounded_rate` ≈ 0.00 in both arms — an uninformative check on this dataset | Only a fabricated rule id or an out-of-chapter citation (COBS, PRIN) registers, and every golden claim is CONC 3. Said in advance so a zero is not later presented as reassurance. |
+| 3 | `citation_hit` ≥ 0.882 (the dense value) | The dense figure is retrieval-bounded by construction; with every provision in context that bound is gone. Direction up, magnitude modest, since v2 dense recall@5 (.740–.814) was not a tight bound. |
+| 4 | `needs_review` recall flat at 1.000 (3/3), precision below 0.750 | Two mechanisms pull against each other — class A concerns context-*poor* fragments, and this arm is context-rich but diffuse — so the inflation should appear as false positives rather than missed reviews. With n=3 the recall cell quantises to thirds. |
+| 5 | Cost ≈ $0.30 for the arm, ≈12× the dense arm's ≈$0.02; p95 latency 2–4× dense | Input goes from ~1.5K to ~21.5K tokens per call while output stays ~60; cost is input-dominated at $0.40/$1.60 per 1M. Latency is prefill-bound but sub-linear. |
+
 ### End-to-end
 
 `python -m sentinel.eval_judge --mode e2e`, full graph (decompose → omission scan →
