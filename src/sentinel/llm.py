@@ -32,6 +32,14 @@ def _log_usage(path: str, deployment: str | None, usage: dict | None, seconds: f
 
 def post(path: str, body: dict) -> dict:
     """POST to the Azure OpenAI data plane (path e.g. "chat/completions") — one retry, then loud."""
+    # first, ahead of the credential checks: replaying a cached metric needs no Azure account,
+    # and if the flag is set the caller has already declared they don't intend to call out
+    if os.environ.get("SENTINEL_OFFLINE"):
+        raise RuntimeError(
+            f"offline replay: {path} needed a live call, but SENTINEL_OFFLINE is set."
+            " A published metric that cannot replay from cache is the bug — do not unset this to"
+            " make the run pass; the number it would produce is a different number."
+        )
     endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT") or sys.exit(
         "AZURE_OPENAI_ENDPOINT not set — set it to your Azure OpenAI resource endpoint"
     )

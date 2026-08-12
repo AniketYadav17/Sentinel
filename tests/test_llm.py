@@ -229,3 +229,55 @@ def test_response_without_usage_block_logs_nothing(env, monkeypatch):
     monkeypatch.setattr(llm.urllib.request, "urlopen", lambda req, timeout: _resp(_azure_ok('{"x": "ok"}')))
     llm.generate_json("p-usage-absent", SCHEMA)
     assert not llm.USAGE_LOG.exists()
+
+
+def test_offline_mode_raises_instead_of_calling_the_network(env, monkeypatch):
+    monkeypatch.setenv("SENTINEL_OFFLINE", "1")
+
+    def boom(req, timeout):
+        raise AssertionError("network hit while SENTINEL_OFFLINE was set")
+
+    monkeypatch.setattr(llm.urllib.request, "urlopen", boom)
+    with pytest.raises(RuntimeError, match="offline replay"):
+        llm.generate_json("p-offline-miss", SCHEMA)
+
+
+def test_offline_error_names_the_endpoint_path(env, monkeypatch):
+    monkeypatch.setenv("SENTINEL_OFFLINE", "1")
+    monkeypatch.setattr(llm.urllib.request, "urlopen", lambda req, timeout: _resp(_azure_ok('{"x": "ok"}')))
+    with pytest.raises(RuntimeError, match="chat/completions"):
+        llm.post("chat/completions", {"model": "sentinel-judge"})
+
+
+def test_offline_mode_still_serves_cache_hits(env, monkeypatch):
+    monkeypatch.setattr(
+        llm.urllib.request, "urlopen",
+        lambda req, timeout: _resp(_azure_ok('{"x": "ok"}')),
+    )
+    llm.generate_json("p-offline-warm", SCHEMA)  # populate the cache while online
+    monkeypatch.setenv("SENTINEL_OFFLINE", "1")
+    assert llm.generate_json("p-offline-warm", SCHEMA) == {"x": "ok"}  # replays, no network
+
+
+def test_offline_unset_behaves_normally(env, monkeypatch):
+    monkeypatch.delenv("SENTINEL_OFFLINE", raising=False)
+    monkeypatch.setattr(llm.urllib.request, "urlopen", lambda req, timeout: _resp(_azure_ok('{"x": "ok"}')))
+    assert llm.generate_json("p-offline-unset", SCHEMA) == {"x": "ok"}
+
+
+def test_empty_offline_var_is_not_offline(env, monkeypatch):
+    # blanking a var is how this repo's own test commands disable Azure config;
+    # SENTINEL_OFFLINE= must therefore mean "off", not "on"
+    monkeypatch.setenv("SENTINEL_OFFLINE", "")
+    monkeypatch.setattr(llm.urllib.request, "urlopen", lambda req, timeout: _resp(_azure_ok('{"x": "ok"}')))
+    assert llm.generate_json("p-offline-empty", SCHEMA) == {"x": "ok"}
+
+
+def test_offline_replay_needs_no_azure_credentials(env, monkeypatch):
+    # replaying a cached metric must not require an Azure account: the offline check
+    # comes BEFORE the endpoint/key checks, and this test pins that ordering
+    monkeypatch.delenv("AZURE_OPENAI_ENDPOINT", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("SENTINEL_OFFLINE", "1")
+    with pytest.raises(RuntimeError, match="offline replay"):
+        llm.post("chat/completions", {"model": "sentinel-judge"})
