@@ -562,6 +562,94 @@ the whole basis for calling this evidence and not proof: the holdout margin is o
 example, the disclosed noise quantum. Weighted retrieval (α=0.5) is not adopted
 alongside it; rule (a) held it back regardless of the tied outcome above.
 
+> **⚠️ Half of that evidence did not reproduce (2026-08-12).** Re-running `--mode e2e` on
+> unchanged code at K=12 gives **0.615 / delta 5.00**, not the 0.654 / 3.69 measured on
+> 2026-08-10. See [e2e does not reproduce](#e2e-does-not-reproduce-2026-08-12) below. The
+> holdout half of the adoption case is unaffected; the eval-set-peak half now rests on a
+> number that cannot currently be reproduced from this repository.
+
+### The R/G authority guard (2026-08-12)
+
+Every chunk carries its **R** (binding rule) or **G** (guidance) designation, the letter
+reaches the judge prompt, and until now nothing checked it — a `breach` verdict resting only
+on guidance passed. The guard, added in `judge_claim` immediately after the grounding check:
+a breach citing no provision with `designation == "R"` is marked `authority:
+"no-binding-rule"` and routed to the human gate. Same no-retry doctrine as the grounding
+check beside it.
+
+The marker name covers two cases, which is why it is not called "guidance-only": a breach
+citing only G provisions, and a breach citing nothing at all — an empty citation list is a
+subset of anything, so the grounding check waves it through.
+
+**Measured across the 26 golden examples: the guard fires on 6 claims** (alongside 3
+`grounding: "unverified"`). It was expected to fire on none. The prediction was that the
+golden labels cite R-via-G correctly so the eval set could not exercise the failure — true of
+the *labels*, but the guard inspects the *judge's* citations on decomposer- and
+scan-generated claims, which are not the labelled ones. Six breach verdicts in a 26-example
+run rested on no binding rule and now go to a human instead of standing.
+
+**e2e is the wrong instrument for this and the number is not offered as evidence.**
+`run_e2e_mode` resumes the gate with `Command(resume={})`, keeping the judged verdicts, so
+gate routing is discarded and the metric is invariant to the guard by construction. That was
+verified directly: with the guard reverted against the same warm cache, e2e is identical.
+The evidence that the guard works is the marker count above plus five unit tests
+(guidance-only breach gated, no-citation breach gated, R-backed breach clean, mixed R and G
+clean, compliant-on-G not gated).
+
+Publishing an unchanged e2e number as proof of a guard that cannot move it would repeat the
+ragas mistake this repo already documented: quoting a metric whose assumptions do not match
+the thing being measured.
+
+### e2e does not reproduce (2026-08-12)
+
+Re-running `python -m sentinel.eval_judge --mode e2e` during Phase 4a, on code whose only
+graph change was a post-processing guard that provably cannot affect the metric:
+
+| | 2026-08-10 (published) | 2026-08-12 (re-run) |
+|---|---|---|
+| overall_accuracy | 0.654 (17/26) | 0.615 (16/26) |
+| mean_claim_delta | 3.69 | 5.00 |
+
+Both numbers are kept. Neither is being quietly replaced, because the fact that the same
+code produced two answers is more informative than either value.
+
+**The R/G guard is not the cause, and this was tested rather than argued.** Re-running with
+the guard's commit reverted, against the identical warm cache, gives 0.615 / 5.00 — byte-identical
+to the run with it. The guard also cannot affect e2e by construction: `run_e2e_mode` resumes
+the HITL gate with `Command(resume={})`, so `_apply_resolutions` overrides no verdicts and
+the report is verdict-identical whether or not a claim was routed for review.
+
+**Root cause, traced node by node through cache mtimes.** The chain diverges at the query
+vector cache, not the LLM cache:
+
+| node | cache state on re-run | consequence |
+|---|---|---|
+| `decompose` | hit, entry dated 2026-08-10 | claims identical to the original run |
+| query vectors | 48 live embedding calls — the whole-promotion queries were absent from `data/embeddings/queries.jsonl` | re-embedded from scratch |
+| `omission_scan` | miss | a different top-12 retrieved, so different omission claims |
+| `judge_claim` (74 calls) | miss | live, downstream of the changed claim set |
+
+So the decomposer reproduced exactly and the omission scan did not, because the retrieval
+feeding it depended on query vectors that were no longer on disk.
+
+**The generalisable finding: the e2e number is not reproducible from the repository.** It
+depends on `data/`, which is gitignored in full — both the LLM response cache and the query
+vector cache. The retrieval arms genuinely do replay byte-for-byte from the query cache, and
+that property was over-generalised to e2e, whose inputs are model-generated and
+cache-chained: one missing embedding at the first retrieval changes every prompt after it.
+A deterministic-looking pipeline is only as reproducible as its least durable cache.
+
+**Not established, and not claimed:** whether re-embedding identical text returns a
+bit-identical vector, and whether the other three sweep rows (K=5 0.500, K=8 0.577, K=20
+0.615) still reproduce. Both are open, and the K-sweep's shape is the thing they would
+bear on.
+
+**The fix this points at,** carried to the Phase 4 list rather than done here: the eval
+caches need to be versioned or their fingerprint recorded next to any published number, so
+a metric either replays or fails loudly. Right now a cold cache silently re-derives a
+different answer, which is precisely the silent-degradation class this codebase otherwise
+hunts.
+
 ### Prediction scorecard (holdout runs)
 
 Predictions were pre-registered before any holdout run, under the amended protocol:
