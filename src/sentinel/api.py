@@ -45,12 +45,15 @@ def _graph():
         # check_same_thread=False: FastAPI runs sync endpoints on a threadpool, so the
         # connection is touched from several threads. _LOCK is what serializes them.
         _CONN = sqlite3.connect(STATE_DIR / "reviews.db", check_same_thread=False)
+        # SqliteSaver.setup() runs `PRAGMA journal_mode=WAL`, and WAL normally needs a
+        # shared-memory -shm file, which an SMB share (Azure Files) cannot provide — setup()
+        # itself then dies with "database is locked". SQLite skips the -shm entirely when the
+        # connection is in exclusive locking mode, so this line is what makes WAL work on the
+        # mounted share. Safe here because the app runs at max-replicas 1 and _LOCK already
+        # serializes writers; it would need revisiting before a second replica ever exists.
+        _CONN.execute("PRAGMA locking_mode=EXCLUSIVE")
         saver = SqliteSaver(_CONN)
-        saver.setup()  # creates the tables — and sets journal_mode=WAL, which is why the override comes after
-        # WAL needs a shared-memory -shm file. Azure Files is SMB and does not support that
-        # reliably, so the deployed queue is the one place it would break. DELETE journalling
-        # costs concurrency we do not have anyway: max-replicas is 1 and _LOCK serializes writers.
-        _CONN.execute("PRAGMA journal_mode=DELETE")
+        saver.setup()
         _GRAPH = build_graph(default_searcher(), checkpointer=saver)
     return _GRAPH
 
