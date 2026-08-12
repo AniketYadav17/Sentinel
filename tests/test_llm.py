@@ -30,6 +30,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setenv("AZURE_OPENAI_API_KEY", "test-key")
     monkeypatch.setenv("AZURE_OPENAI_CHAT_DEPLOYMENT", "sentinel-judge")
     monkeypatch.setattr(llm, "CACHE_DIR", tmp_path / "llm")
+    monkeypatch.setattr(llm, "USAGE_LOG", tmp_path / "usage.jsonl")
 
 
 def test_returns_parsed_json(env, monkeypatch):
@@ -187,3 +188,44 @@ def test_connection_error_raises_after_retry(env, monkeypatch):
     with pytest.raises(RuntimeError, match="network failure"):
         llm.generate_json("p-conn-fail", SCHEMA, cache=False)
     assert len(calls) == 2
+
+
+def _azure_ok_with_usage(text: str, prompt_tokens: int, completion_tokens: int) -> dict:
+    return {
+        "choices": [{"finish_reason": "stop", "message": {"content": text, "refusal": None}}],
+        "usage": {"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens,
+                  "total_tokens": prompt_tokens + completion_tokens},
+    }
+
+
+def test_live_call_appends_usage_row(env, monkeypatch):
+    monkeypatch.setattr(
+        llm.urllib.request, "urlopen",
+        lambda req, timeout: _resp(_azure_ok_with_usage('{"x": "ok"}', 120, 30)),
+    )
+    llm.generate_json("p-usage-row", SCHEMA)
+    rows = [json.loads(line) for line in llm.USAGE_LOG.read_text(encoding="utf-8").splitlines() if line]
+    assert len(rows) == 1
+    assert rows[0]["path"] == "chat/completions"
+    assert rows[0]["deployment"] == "sentinel-judge"
+    assert rows[0]["prompt_tokens"] == 120
+    assert rows[0]["completion_tokens"] == 30
+    assert isinstance(rows[0]["ms"], int) and rows[0]["ms"] >= 0
+    assert rows[0]["ts"] > 0
+
+
+def test_cached_call_logs_nothing(env, monkeypatch):
+    monkeypatch.setattr(
+        llm.urllib.request, "urlopen",
+        lambda req, timeout: _resp(_azure_ok_with_usage('{"x": "ok"}', 10, 5)),
+    )
+    llm.generate_json("p-usage-cached", SCHEMA)
+    llm.generate_json("p-usage-cached", SCHEMA)  # cache hit — must not reach post()
+    rows = [line for line in llm.USAGE_LOG.read_text(encoding="utf-8").splitlines() if line]
+    assert len(rows) == 1
+
+
+def test_response_without_usage_block_logs_nothing(env, monkeypatch):
+    monkeypatch.setattr(llm.urllib.request, "urlopen", lambda req, timeout: _resp(_azure_ok('{"x": "ok"}')))
+    llm.generate_json("p-usage-absent", SCHEMA)
+    assert not llm.USAGE_LOG.exists()
