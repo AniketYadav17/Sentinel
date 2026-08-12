@@ -324,3 +324,38 @@ def test_compliant_verdict_on_guidance_is_not_gated(monkeypatch):
     state, _ = run(g)
     assert "__interrupt__" not in state
     assert "authority" not in state["report"]["claims"][0]
+
+
+def test_interrupt_survives_a_new_graph_over_the_same_sqlite_file(monkeypatch, tmp_path):
+    import sqlite3
+
+    from langgraph.checkpoint.sqlite import SqliteSaver
+    from langgraph.types import Command
+
+    db = tmp_path / "reviews.db"
+    thread = {"configurable": {"thread_id": "restart-1"}}
+
+    # first "process": audit trips the gate, then the graph object goes away
+    saver_a = SqliteSaver(sqlite3.connect(db, check_same_thread=False))
+    monkeypatch.setattr(audit, "generate_json",
+                        fake_generate([{"claims": [{"claim": "c1"}]}, OM_NONE, J_LOW]))
+    graph_a = audit.build_graph(lambda claim, k=None: [PROVISION], checkpointer=saver_a)
+    state = graph_a.invoke({"text": "promo", "channel": "promo_email"}, thread)
+    assert "__interrupt__" in state
+    del graph_a
+
+    # second "process": a brand-new graph over the same file resumes the paused audit
+    saver_b = SqliteSaver(sqlite3.connect(db, check_same_thread=False))
+    graph_b = audit.build_graph(lambda claim, k=None: [PROVISION], checkpointer=saver_b)
+    final = graph_b.invoke(Command(resume={"0": "breach"}), thread)
+    assert final["report"]["claims"][0]["verdict"] == "breach"
+    assert final["report"]["claims"][0]["resolved_by"] == "human"
+    assert final["report"]["overall"] == "breach"
+
+
+def test_build_graph_still_defaults_to_in_memory(monkeypatch):
+    # the CLI and every other test call build_graph(searcher) positionally
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    g = graph_for(monkeypatch, [{"claims": [{"claim": "c1"}]}, OM_NONE, J_OK])
+    assert isinstance(g.checkpointer, InMemorySaver)
