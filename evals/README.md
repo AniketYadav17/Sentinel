@@ -282,6 +282,77 @@ contradicts its stated direction, and bands are not widened after seeing the dat
 | 4 | `needs_review` recall flat at 1.000 (3/3), precision below 0.750 | Two mechanisms pull against each other — class A concerns context-*poor* fragments, and this arm is context-rich but diffuse — so the inflation should appear as false positives rather than missed reviews. With n=3 the recall cell quantises to thirds. |
 | 5 | Cost ≈ $0.30 for the arm, ≈12× the dense arm's ≈$0.02; p95 latency 2–4× dense | Input goes from ~1.5K to ~21.5K tokens per call while output stays ~60; cost is input-dominated at $0.40/$1.60 per 1M. Latency is prefill-bound but sub-linear. |
 
+#### Full-corpus control arm — result
+
+Run 2026-08-12, `gpt-4.1-mini`, 34 claims, all 86 chunks in every prompt.
+
+| | dense top-5 | full corpus (86 chunks) |
+|---|---|---|
+| accuracy | 0.971 (33/34) | **1.000 (34/34)** |
+| citation_hit | 0.882 | 0.882 |
+| ungrounded_rate | 0.000 | 0.000 |
+| breach precision/recall (n=25) | 1.000 / 1.000 | 1.000 / 1.000 |
+| compliant precision/recall (n=6) | 1.000 / 0.833 | 1.000 / 1.000 |
+| needs_review precision/recall (n=3) | 0.750 / 1.000 | 1.000 / 1.000 |
+| confusion | breach→breach 25, compliant→compliant 5, compliant→needs_review 1, needs_review→needs_review 3 | breach→breach 25, compliant→compliant 6, needs_review→needs_review 3 |
+| broker-3.7 area accuracy | 0.667 | 1.000 |
+| measured cost | not measurable (replayed from cache) | $0.2826 |
+| input tokens | ~74,100 (implied, see below) | 690,742 measured |
+| p50 / p95 latency | not measurable | 1,801 ms / 2,443 ms |
+
+**The full-corpus arm wins, by exactly one claim.** It fixes the single error dense makes —
+the same error both provider families made, a compliant claim routed to `needs_review` — and
+returns a clean diagonal. At n=34 one claim is 2.9 percentage points, so this is a
+one-claim result and is quoted as one. It is not a proven improvement.
+
+**The pre-committed conclusion, published as written:** *retrieval is a scaling investment
+for the Handbook-scale target, currently an accuracy tax at 86 chunks.* That sentence was
+fixed in advance precisely so it could not be softened afterwards, and the margin caveat
+above is stated alongside it rather than instead of it.
+
+**What retrieval buys, now that cost is instrumented.** The full-corpus arm costs $0.2826
+against an implied ~$0.036 for dense, about **7.8× the spend for +1 claim**. So the honest
+trade at this corpus size is: retrieval costs one claim of accuracy and saves roughly 87% of
+input spend. Neither half of that sentence was measurable before this phase.
+
+Two caveats on the cost row, both structural. Dense could not be costed because all 34 of its
+responses replayed from the disk cache and the instrumentation only sees live calls — so its
+figure is *implied*, from the offline prompt-size ratio (313,026 chars dense vs 2,916,140
+full, 9.3×) scaled by the measured 4.22 chars/token. And no dense latency exists at all, so
+the predicted p95 ratio is **not scorable**, recorded here rather than dropped.
+
+**`citation_hit` did not move.** Both arms sit at 0.882, so the four cited claims that miss
+their gold rule miss it with the entire corpus in the prompt. Those misses are the judge's,
+not retrieval's — retrieval was never the binding constraint on citation for this set.
+
+**An unplanned corroboration.** The prediction argued that diffuse context would *inflate*
+`needs_review`. The opposite happened: extra context *resolved* the one claim dense left
+unresolved, and `needs_review` precision went 0.750 → 1.000. That is evidence that class-A
+NR-inflation is a context-*poverty* problem, which is exactly the premise of the queued
+NR-inflation lever. The control arm accidentally supported the next experiment's hypothesis.
+
+#### Prediction scorecard (full-corpus control arm)
+
+Five predictions, eight scorable sub-claims. **Two clean hits, four misses, one half, one not
+scorable.** The headline prediction was wrong in both its number and its mechanism.
+
+| # | Predicted | Measured | Verdict |
+|---|---|---|---|
+| 1 | accuracy ≤ 0.971, band 0.912–0.971 | 1.000 | **MISS** — above the band and against the stated direction |
+| 2 | `ungrounded_rate` ≈ 0.00 in both arms, uninformative | 0.000 / 0.000 | HIT |
+| 3 | `citation_hit` ≥ 0.882, direction up | 0.882, exactly flat | **HALF** — band held, direction did not materialise |
+| 4a | `needs_review` recall flat at 1.000 | 1.000 | HIT |
+| 4b | `needs_review` precision below 0.750 | 1.000 | **MISS** — moved the opposite way; mechanism inverted |
+| 5a | cost ≈ $0.30 | $0.2826 | HIT |
+| 5b | ≈12× the dense arm | ≈7.8× (against implied dense cost) | **MISS** — dense prompts are ~2.2K tokens, not the ~1.5K assumed |
+| 5c | p95 latency 2–4× dense | — | **NOT SCORABLE** — dense never ran live, so no latency exists to divide by |
+
+The instructive miss is 1 and 4b together. Both came from one assumption, that this judge
+degrades as context grows diffuse, and both were wrong in the same direction. The K=20
+over-generation row was the only in-repo evidence for that assumption, and it belongs to the
+scan node, not the judge — which was flagged as "suggestive, not proof" when the experiment
+was queued. It turned out not to transfer.
+
 ### End-to-end
 
 `python -m sentinel.eval_judge --mode e2e`, full graph (decompose → omission scan →
@@ -535,3 +606,12 @@ design, a demoted and optional metric group, not re-baselined on Azure this roun
 because the Phase 3 analysis found off-the-shelf faithfulness mis-measures this task
 shape (rationales must reference the claim under assessment, which is never present in
 the retrieved contexts).
+
+**Cost and latency figures are first-live-run, not per-replay.** `llm.post` writes one row
+per live call to `data/usage.jsonl` (gitignored), and `python -m sentinel.usage [--since
+<iso>]` reports calls, tokens, cost and p50/p95 latency per deployment. Cache hits never
+reach the transport, so a replayed arm logs nothing and cannot be costed after the fact —
+which is why the full-corpus arm has a measured cost and the dense arm it replaced does not.
+Anything already in the cache when instrumentation landed is unpriceable without re-running
+it live. The USD rates live in `usage.py`, deliberately not in the log, so re-pricing is a
+code change and recorded runs stay as recorded.
