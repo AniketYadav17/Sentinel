@@ -14,7 +14,7 @@ from pathlib import Path
 from sentinel.audit import JUDGE_SCHEMA, TOP_K, judge_prompt
 from sentinel.eval_retrieval import normalize_rule_id, query_vectors
 from sentinel.index import Index, read_jsonl
-from sentinel.llm import generate_json
+from sentinel.llm import fingerprint, generate_json
 
 VERDICTS = ("breach", "compliant", "needs_review")
 RESULTS_PATH = Path(__file__).parents[2] / "data" / "cache" / "judge_results.jsonl"
@@ -65,6 +65,7 @@ def print_metrics(m: dict) -> None:
     print("  confusion (gold -> pred):", {f"{g}->{p}": c for (g, p), c in sorted(m["confusion"].items())})
     for a, acc in m["by_area"].items():
         print(f"  {a:<22} accuracy {acc:.3f}")
+    print(f"run fingerprint: {fingerprint()}")
     print("note: citation_hit is bounded by retrieval recall — see the retrieval trade-off table (evals/README.md)")
 
 

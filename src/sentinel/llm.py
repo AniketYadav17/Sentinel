@@ -18,6 +18,15 @@ from pathlib import Path
 MODEL = "gpt-4.1-mini"  # cache-key identity — the real model, not the deployment alias; bump together with extract.py's MODEL — both key caches on it
 CACHE_DIR = Path(__file__).parents[2] / "data" / "cache" / "llm"
 USAGE_LOG = Path(__file__).parents[2] / "data" / "usage.jsonl"
+CONSUMED: list[str] = []  # cache keys this process used — hits and misses both, so a replay can be compared to the run that published the number
+
+
+def fingerprint() -> str:
+    """Digest of the cache entries this process consumed. Same inputs -> same string."""
+    if not CONSUMED:
+        return "0 entries, sha256:-"
+    digest = hashlib.sha256("\x00".join(sorted(CONSUMED)).encode()).hexdigest()
+    return f"{len(set(CONSUMED))} entries, sha256:{digest[:12]}"
 
 
 def _log_usage(path: str, deployment: str | None, usage: dict | None, seconds: float) -> None:
@@ -88,6 +97,7 @@ def generate_json(prompt: str, schema: dict, *, cache: bool = True) -> dict:
     """One structured-output call: prompt + json_schema -> parsed JSON object."""
     key_material = "\x00".join((MODEL, prompt, json.dumps(schema, sort_keys=True)))  # separator kills prompt/schema boundary ambiguity
     cache_path = CACHE_DIR / (hashlib.sha256(key_material.encode()).hexdigest() + ".json")
+    CONSUMED.append(cache_path.stem)
     if cache and cache_path.exists():
         return json.loads(cache_path.read_text(encoding="utf-8"))
     text = chat_content(

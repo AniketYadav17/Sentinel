@@ -107,3 +107,28 @@ def test_query_vector_cache_key_is_model_and_dim_scoped(tmp_path, monkeypatch):
 
     assert calls == [["q1"]]        # stale entry was a miss -> re-embedded
     assert vectors == [[1.0, 0.0]]  # the stale vector was never served
+
+
+def test_query_vectors_records_consumed_shas(tmp_path, monkeypatch):
+    import sentinel.eval_retrieval as er
+    import sentinel.llm as llm
+
+    monkeypatch.setattr(er, "embed_texts", lambda texts: [[0.1, 0.2] for _ in texts])
+    cache = tmp_path / "queries.jsonl"
+    llm.CONSUMED.clear()
+    er.query_vectors(["alpha", "beta"], cache)
+    assert len(llm.CONSUMED) == 2
+
+    llm.CONSUMED.clear()
+    er.query_vectors(["alpha"], cache)  # served from the file this time
+    assert len(llm.CONSUMED) == 1
+
+
+def test_query_vectors_raises_offline_on_an_uncached_query(tmp_path, monkeypatch):
+    # no urlopen stub and no Azure env needed: the guard fires inside llm.post before
+    # either matters, which is the whole point of it being the first statement there
+    import sentinel.eval_retrieval as er
+
+    monkeypatch.setenv("SENTINEL_OFFLINE", "1")
+    with pytest.raises(RuntimeError, match="offline replay"):
+        er.query_vectors(["never-embedded-before"], tmp_path / "queries.jsonl")
