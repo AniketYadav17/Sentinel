@@ -171,6 +171,10 @@ def build_graph(searcher):
         cited = {normalize_rule_id(r) for r in judged["rule_ids"]}
         if not cited <= {p["rule_id"] for p in provisions}:
             judged["grounding"] = "unverified"  # cited a rule it was never shown — a human decides, never a retry
+        if judged["verdict"] == "breach" and not any(
+            p["designation"] == "R" for p in provisions if p["rule_id"] in cited
+        ):
+            judged["authority"] = "no-binding-rule"  # R binds, G guides — a breach must rest on a rule, so a human decides
         j = judged | {"claim": payload["claim"], "index": payload["index"]}
         return {"judgements": [j]}
 
@@ -184,7 +188,8 @@ def build_graph(searcher):
         pending = [
             {"index": i, "claim": c["claim"], "judged": c}
             for i, c in enumerate(report["claims"])
-            if c["verdict"] == "needs_review" or c["confidence"] == "low" or c.get("grounding") == "unverified"
+            if c["verdict"] == "needs_review" or c["confidence"] == "low"
+            or c.get("grounding") == "unverified" or c.get("authority") == "no-binding-rule"
         ]
         if not pending:
             return {}

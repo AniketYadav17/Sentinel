@@ -17,6 +17,17 @@ from pathlib import Path
 
 MODEL = "gpt-4.1-mini"  # cache-key identity — the real model, not the deployment alias; bump together with extract.py's MODEL — both key caches on it
 CACHE_DIR = Path(__file__).parents[2] / "data" / "cache" / "llm"
+USAGE_LOG = Path(__file__).parents[2] / "data" / "usage.jsonl"
+
+
+def _log_usage(path: str, deployment: str | None, usage: dict | None, seconds: float) -> None:
+    """One row per LIVE call. Cache hits never reach post(), so this is first-run cost, not per-replay cost."""
+    if not usage:
+        return
+    USAGE_LOG.parent.mkdir(parents=True, exist_ok=True)
+    row = {"ts": time.time(), "path": path, "deployment": deployment, "ms": round(seconds * 1000)} | usage
+    with USAGE_LOG.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(row) + "\n")
 
 
 def post(path: str, body: dict) -> dict:
@@ -33,9 +44,12 @@ def post(path: str, body: dict) -> dict:
         headers={"Content-Type": "application/json", "api-key": api_key},
     )
     for attempt in (1, 2):
+        started = time.perf_counter()  # per attempt: a retry times the successful call, not the failure plus its sleep
         try:
             with urllib.request.urlopen(req, timeout=60) as resp:
-                return json.load(resp)
+                payload = json.load(resp)
+            _log_usage(path, body.get("model"), payload.get("usage"), time.perf_counter() - started)
+            return payload
         except urllib.error.HTTPError as e:  # subclass of URLError — this clause stays first
             if e.code == 429 and attempt == 1:
                 time.sleep(int(e.headers.get("Retry-After") or 60))

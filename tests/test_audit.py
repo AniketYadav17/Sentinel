@@ -272,3 +272,55 @@ def test_default_searcher_uses_query_cache(monkeypatch, tmp_path):
 
     assert len(calls) == 1  # second call hit the cache — no second embed
     assert r1 == r2
+
+
+G_PROVISION = {"rule_id": "CONC 3.3.4", "designation": "G", "section": "CONC 3.3", "text": "guidance on clarity"}
+J_BREACH_ON_G = {"verdict": "breach", "rule_ids": ["CONC 3.3.4G"], "rationale": "r", "confidence": "high"}
+J_BREACH_NO_RULES = {"verdict": "breach", "rule_ids": [], "rationale": "r", "confidence": "high"}
+J_OK_ON_G = {"verdict": "compliant", "rule_ids": ["CONC 3.3.4G"], "rationale": "r", "confidence": "high"}
+
+
+def test_breach_citing_only_guidance_routes_to_gate(monkeypatch):
+    monkeypatch.setattr(audit, "generate_json",
+                        fake_generate([{"claims": [{"claim": "c1"}]}, OM_NONE, J_BREACH_ON_G]))
+    g = audit.build_graph(lambda claim, k=None: [G_PROVISION])
+    state, _ = run(g)
+    assert "__interrupt__" in state
+    assert state["__interrupt__"][0].value["pending"][0]["judged"]["authority"] == "no-binding-rule"
+
+
+def test_breach_citing_no_rules_at_all_routes_to_gate(monkeypatch):
+    monkeypatch.setattr(audit, "generate_json",
+                        fake_generate([{"claims": [{"claim": "c1"}]}, OM_NONE, J_BREACH_NO_RULES]))
+    g = audit.build_graph(lambda claim, k=None: [PROVISION])
+    state, _ = run(g)
+    assert "__interrupt__" in state
+    assert state["__interrupt__"][0].value["pending"][0]["judged"]["authority"] == "no-binding-rule"
+
+
+def test_breach_citing_a_binding_rule_passes_clean(monkeypatch):
+    # PROVISION is designation "R"; J_BREACH cites CONC 3.3.1R which normalizes onto it.
+    g = graph_for(monkeypatch, [{"claims": [{"claim": "c1"}]}, OM_NONE, J_BREACH])
+    state, _ = run(g)
+    assert "__interrupt__" not in state
+    assert "authority" not in state["report"]["claims"][0]
+
+
+def test_breach_citing_both_r_and_g_passes_clean(monkeypatch):
+    both = {"verdict": "breach", "rule_ids": ["CONC 3.3.1R", "CONC 3.3.4G"], "rationale": "r", "confidence": "high"}
+    monkeypatch.setattr(audit, "generate_json",
+                        fake_generate([{"claims": [{"claim": "c1"}]}, OM_NONE, both]))
+    g = audit.build_graph(lambda claim, k=None: [PROVISION, G_PROVISION])
+    state, _ = run(g)
+    assert "__interrupt__" not in state
+    assert "authority" not in state["report"]["claims"][0]
+
+
+def test_compliant_verdict_on_guidance_is_not_gated(monkeypatch):
+    # The guard is about the authority a BREACH rests on. A compliant verdict citing G is fine.
+    monkeypatch.setattr(audit, "generate_json",
+                        fake_generate([{"claims": [{"claim": "c1"}]}, OM_NONE, J_OK_ON_G]))
+    g = audit.build_graph(lambda claim, k=None: [G_PROVISION])
+    state, _ = run(g)
+    assert "__interrupt__" not in state
+    assert "authority" not in state["report"]["claims"][0]
