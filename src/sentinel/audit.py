@@ -144,8 +144,12 @@ class AuditState(TypedDict, total=False):
     report: dict
 
 
-def build_graph(searcher):
-    """searcher(text: str, k: int = TOP_K) -> list[dict] provision chunks — called per-claim (k=TOP_K) and once per audit on the full promotion text (k=OMISSION_TOP_K)."""
+def build_graph(searcher, checkpointer=None):
+    """searcher(text: str, k: int = TOP_K) -> list[dict] provision chunks — called per-claim (k=TOP_K) and once per audit on the full promotion text (k=OMISSION_TOP_K).
+
+    checkpointer: defaults to in-process memory. The API passes a SqliteSaver so a paused
+    review outlives the process that created it.
+    """
 
     def decompose(state: AuditState) -> dict:
         raw = generate_json(decompose_prompt(state["text"], state["channel"]), DECOMPOSE_SCHEMA)
@@ -208,7 +212,7 @@ def build_graph(searcher):
     g.add_edge("judge_claim", "aggregate")
     g.add_edge("aggregate", "gate")
     g.add_edge("gate", END)
-    return g.compile(checkpointer=InMemorySaver())
+    return g.compile(checkpointer=checkpointer or InMemorySaver())
 
 
 def _apply_resolutions(report: dict, resolutions: dict) -> dict:

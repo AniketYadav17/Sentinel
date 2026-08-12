@@ -1,0 +1,25 @@
+.git
+.github
+.venv
+.pytest_cache
+.ruff_cache
+.vscode
+docs/
+tests/
+evals/
+
+# caches and local run data — not corpus. queries.jsonl alone is 8.4 MB of query
+# cache, and a stale cache baked into an image is worse than no cache at all.
+data/cache/
+data/sources/
+data/usage.jsonl
+data/embeddings/queries.jsonl
+data/*_gemini_stale/
+data/*_backup/
+
+# private study docs, same set .gitignore keeps out of the repo
+Capstone Proposal*.md
+Sentinel — *.md
+
+*.md
+!README.md

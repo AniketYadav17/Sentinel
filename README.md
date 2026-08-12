@@ -33,6 +33,27 @@ uv run python -m sentinel.eval_retrieval --mode all
 uv run python -m sentinel.eval_judge --mode judge
 ```
 
+## Run it as a service
+
+The same graph behind an HTTP surface, with a review queue that outlives the process:
+
+```
+docker build -t sentinel:local .
+docker run -p 8000:8000 -e SENTINEL_API_KEY=your-key \
+  -e AZURE_OPENAI_ENDPOINT -e AZURE_OPENAI_API_KEY \
+  -e AZURE_OPENAI_EMBED_DEPLOYMENT -e AZURE_OPENAI_CHAT_DEPLOYMENT \
+  -v /some/host/dir:/state sentinel:local
+```
+
+`POST /audit` returns a report, or `202` with a `review_id` when a claim needs a human. `GET /reviews` lists what is waiting and `POST /reviews/{id}/resume` takes `{"0": "breach"}` and returns the finished report. Every request needs an `X-API-Key` header; if `SENTINEL_API_KEY` is unset the API rejects everything rather than running open, because each audit spends real model tokens.
+
+Three things worth knowing rather than discovering:
+
+- **`/state` must be durable storage, and it is not `/data`.** The image bakes the Handbook corpus at `/app/data`, so the image tag is effectively the corpus version; `reviews.db` lives at `/state` instead. Caches are deliberately ephemeral, because rebuilding one costs an embedding call, while losing a pending human review is a correctness failure.
+- **One replica, one reviewer.** The queue is SQLite on a mounted volume, with a single lock around the graph. That is the right size for this project and would not be for a real deployment.
+- **It does not run on Azure Files.** This was deployed to Azure Container Apps in UK South with the queue on a mounted Azure Files share, and SQLite could not write to it at all — not in WAL, not even with a rollback journal. Plain file writes succeed, so the mount is fine; what SMB does not provide is the byte-range locking SQLite requires. `python -m sentinel.statecheck` reports exactly which of those work on a given volume, and is what produced that result. The deployment was torn down rather than papered over. A durable cloud queue needs Azure Files **NFS**, or Postgres via `langgraph-checkpoint-postgres` instead of SQLite.
+- **Dependencies grew here.** Runtime is now `langgraph`, `pydantic`, `fastapi`, `uvicorn` and `langgraph-checkpoint-sqlite`, which ends the "two runtime dependencies" streak this README had been publishing. The trade bought pydantic request validation, generated OpenAPI docs, and a checkpointer that is already tested by someone else.
+
 ## Note
 
 Portfolio/research project. Not legal or compliance advice.
