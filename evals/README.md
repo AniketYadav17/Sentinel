@@ -563,7 +563,7 @@ example, the disclosed noise quantum. Weighted retrieval (α=0.5) is not adopted
 alongside it; rule (a) held it back regardless of the tied outcome above.
 
 > **⚠️ Half of that evidence did not reproduce (2026-08-12).** Re-running `--mode e2e` on
-> unchanged code at K=12 gives **0.615 / delta 5.00**, not the 0.654 / 3.69 measured on
+> unchanged code at K=12 gives **0.615 / delta 5.00**, not the 0.654 / 4.38 measured on
 > 2026-08-10. See [e2e does not reproduce](#e2e-does-not-reproduce-2026-08-12) below. The
 > holdout half of the adoption case is unaffected; the eval-set-peak half now rests on a
 > number that cannot currently be reproduced from this repository.
@@ -608,10 +608,15 @@ graph change was a post-processing guard that provably cannot affect the metric:
 | | 2026-08-10 (published) | 2026-08-12 (re-run) |
 |---|---|---|
 | overall_accuracy | 0.654 (17/26) | 0.615 (16/26) |
-| mean_claim_delta | 3.69 | 5.00 |
+| mean_claim_delta | 4.38 | 5.00 |
 
-Both numbers are kept. Neither is being quietly replaced, because the fact that the same
-code produced two answers is more informative than either value.
+Exactly one example out of 26 flipped, which is 3.85 points — the disclosed noise quantum for
+this set. Both numbers are kept. Neither is being quietly replaced, because the fact that the
+same code produced two answers is more informative than either value.
+
+*(Correction, same day: this comparison was first published against a delta of 3.69. That is
+the **K=5** row of the sweep table above; K=12's published delta is 4.38. The accuracy
+discrepancy is unchanged, the delta discrepancy is 0.62 rather than the 1.31 first stated.)*
 
 **The R/G guard is not the cause, and this was tested rather than argued.** Re-running with
 the guard's commit reverted, against the identical warm cache, gives 0.615 / 5.00 — byte-identical
@@ -619,18 +624,40 @@ to the run with it. The guard also cannot affect e2e by construction: `run_e2e_m
 the HITL gate with `Command(resume={})`, so `_apply_resolutions` overrides no verdicts and
 the report is verdict-identical whether or not a claim was routed for review.
 
-**Root cause, traced node by node through cache mtimes.** The chain diverges at the query
-vector cache, not the LLM cache:
+**What is established, traced node by node through cache mtimes:**
 
 | node | cache state on re-run | consequence |
 |---|---|---|
 | `decompose` | hit, entry dated 2026-08-10 | claims identical to the original run |
 | query vectors | 48 live embedding calls — the whole-promotion queries were absent from `data/embeddings/queries.jsonl` | re-embedded from scratch |
-| `omission_scan` | miss | a different top-12 retrieved, so different omission claims |
-| `judge_claim` (74 calls) | miss | live, downstream of the changed claim set |
+| `omission_scan` | miss | ran live |
+| `judge_claim` (74 calls) | miss | ran live |
 
-So the decomposer reproduced exactly and the omission scan did not, because the retrieval
-feeding it depended on query vectors that were no longer on disk.
+**What was first published as the root cause, and is wrong.** The original write-up said the
+re-embedding produced a different top-12, and that different retrieval is what moved the
+omission claims. Two measurements taken while building the replay guard rule that out:
+
+- **Embedding the same text twice returns a bit-identical vector** (768 dims, max absolute
+  delta 0.0). A missing query vector is therefore *recoverable* — re-embedding restores the
+  same vector, so the same top-12, so the same omission prompt. Absence alone cannot change
+  retrieval.
+- **Two live `decompose` calls at temperature 0 on the same prompt returned byte-identical
+  JSON.** Same-session non-determinism does not explain it either.
+
+So the mechanism is **not** identified. What remains true is the observable: the entries the
+2026-08-10 run produced were not on disk, those nodes ran live, and the live results differed
+from the published ones. The leading remaining hypothesis is that the served model version
+behind the `sentinel-judge` deployment changed between the two dates — Azure updates
+deployments unless a version is pinned, and that would preserve same-session determinism while
+breaking determinism across days. **That is a hypothesis, not a finding:** the cached entries
+store only parsed JSON, not the response's `model` field, so the two runs' model versions
+cannot be compared after the fact.
+
+If that hypothesis is right, the consequence is larger than the caching bug it was mistaken
+for: **temperature 0 plus a warm cache is not sufficient for reproducibility across time**, and
+the complementary fix is pinning the deployment's model version, not just preserving caches.
+Recording the response `model` field in the usage log would make the next occurrence
+diagnosable rather than speculative.
 
 **The generalisable finding: the e2e number is not reproducible from the repository.** It
 depends on `data/`, which is gitignored in full — both the LLM response cache and the query
@@ -639,16 +666,58 @@ that property was over-generalised to e2e, whose inputs are model-generated and
 cache-chained: one missing embedding at the first retrieval changes every prompt after it.
 A deterministic-looking pipeline is only as reproducible as its least durable cache.
 
-**Not established, and not claimed:** whether re-embedding identical text returns a
-bit-identical vector, and whether the other three sweep rows (K=5 0.500, K=8 0.577, K=20
-0.615) still reproduce. Both are open, and the K-sweep's shape is the thing they would
-bear on.
+**Settled since:** re-embedding identical text *is* bit-identical (measured 2026-08-12, max
+absolute delta 0.0 across 768 dims), which is what falsified the original root cause above.
+**Still open:** whether the other three sweep rows (K=5 0.500, K=8 0.577, K=20 0.615)
+reproduce, and whether the judge deployment's model version moved. The K-sweep's shape is what
+those bear on.
 
-**The fix this points at,** carried to the Phase 4 list rather than done here: the eval
-caches need to be versioned or their fingerprint recorded next to any published number, so
-a metric either replays or fails loudly. Right now a cold cache silently re-derives a
-different answer, which is precisely the silent-degradation class this codebase otherwise
-hunts.
+**The fix, built the same day (Phase 4a.1).** `SENTINEL_OFFLINE=1` makes any cache miss raise
+instead of calling out, so a metric either replays exactly or stops and says why. It is checked
+as the first statement in `llm.post`, the only place in this codebase that opens a socket, so it
+covers chat, embeddings and image annotation together — and it sits ahead of the credential
+checks, so replaying a published number needs no Azure account. Judge runs also print a
+`run fingerprint` over the cache entries they consumed, LLM responses and query vectors alike.
+
+Reproduce any surviving number with:
+
+```
+SENTINEL_OFFLINE=1 uv run python -m sentinel.eval_judge --mode judge
+```
+
+#### Replay status of every published metric (2026-08-12)
+
+All of the below ran under `SENTINEL_OFFLINE=1`, and `python -m sentinel.usage --since` confirms
+**zero live calls** across the whole sweep.
+
+| metric | published | replays offline | value on replay | run fingerprint |
+|---|---|---|---|---|
+| retrieval, bm25 | .789 r@5 / .744 MRR | yes | identical | not instrumented |
+| retrieval, dense | .740 / .674 | yes | identical | not instrumented |
+| retrieval, hybrid | .814 / .824 | yes | identical | not instrumented |
+| retrieval, weighted α=0.5 | .814 / .833 | yes | identical | not instrumented |
+| judge, dense top-5 | 0.971 / citation_hit 0.882 | yes | identical | `68 entries, sha256:e94059796cc8` |
+| judge, full corpus | 1.000 / citation_hit 0.882 | yes | identical | `34 entries, sha256:5fa7ac70c48e` |
+| e2e, K=12 | 0.654 / 4.38 | **completes, but reproduces 0.615 / 5.00** | differs | — |
+
+The two judge fingerprints differ in size for a real reason rather than an accident: the dense
+arm consumes 34 judge prompts *plus* 34 query vectors, while the full-corpus arm retrieves
+nothing, so it consumes 34 entries and no embeddings.
+
+Retrieval is deliberately left un-instrumented. Its reproducibility was never in doubt and is
+demonstrated directly by all four arms landing on their published figures; a fingerprint there
+would be ceremony.
+
+**The e2e row is the honest one.** It replays in the sense that it completes offline and is
+deterministic — but what it replays is *today's* cache, so it reproduces 0.615, not the
+published 0.654. **The 2026-08-10 cache state no longer exists, so 0.654 can never be
+re-verified.** It stays in this file labelled historical, because one codebase producing two
+answers is the finding; deleting the older number would hide it.
+
+**CI cannot run any of this.** `data/` is gitignored in full, so the runner has no cache and every
+replay would raise. The guard is a local, pre-publication tool — not a merge gate. CI runs the
+offline unit suite and the dataset-integrity checks, exactly as `README.md` says, and nothing
+here changes that.
 
 ### Prediction scorecard (holdout runs)
 
